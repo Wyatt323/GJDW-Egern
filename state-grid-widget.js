@@ -1,6 +1,6 @@
 const STORAGE_KEY = "state_grid_widget_v1";
 const STATUS_KEY = "state_grid_capture_status_v1";
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 const PROVIDER_SOURCE_KEY = "state_grid_provider_source_v1";
 const PROVIDER_URL = "https://raw.githubusercontent.com/Yuheng0101/X/9ea8da5ce1d83572e937fa5d6882edb8382c4c30/Tasks/95598/95598.js";
 const GREEN = "#00A88F";
@@ -23,8 +23,9 @@ async function renderWidget(ctx) {
   const stored = ctx.storage.getJSON(STORAGE_KEY) || { accounts: [] };
   const captureStatus = ctx.storage.getJSON(STATUS_KEY) || null;
   let accounts = Array.isArray(stored.accounts) ? stored.accounts : [];
+  const updateMode = env.RUN_MODE === "update";
 
-  if (env.SGCC_USERNAME && env.SGCC_PASSWORD) {
+  if (updateMode && env.SGCC_USERNAME && env.SGCC_PASSWORD) {
     try {
       const remote = normalizePayload(await fetchOfficialData(ctx, env));
       if (remote.length) {
@@ -57,7 +58,7 @@ async function renderWidget(ctx) {
   const index = Math.max(0, Number.parseInt(env.ACCOUNT_INDEX || "0", 10) || 0);
   const account = accounts[index] || accounts[0] || null;
 
-  if (!account) return emptyWidget(family, ctx.storage.getJSON(STATUS_KEY) || captureStatus, env);
+  if (!account) return emptyWidget(family, ctx.storage.getJSON(STATUS_KEY) || captureStatus, env, updateMode);
   if (env.DISPLAY_NAME) account.name = env.DISPLAY_NAME;
   if (family === "accessoryInline") return inlineWidget(account);
   if (family === "accessoryCircular") return circularWidget(account);
@@ -101,7 +102,7 @@ function runLegacyProvider(ctx, source, env) {
         settled = true;
         reject(new Error("查询超时，请稍后再试"));
       }
-    }, 110000);
+    }, 85000);
 
     globalThis.$request = { method: "GET", url: "https://api.wsgw-rewrite.com/electricity/bill/all" };
     globalThis.Egern = globalThis.Egern || {};
@@ -325,11 +326,13 @@ function recentDays(days) {
   ] };
 }
 
-function emptyWidget(family, captureStatus, env) {
+function emptyWidget(family, captureStatus, env, updateMode) {
   const compact = family.startsWith("accessory");
   const message = (!env.SGCC_USERNAME || !env.SGCC_PASSWORD)
     ? (compact ? "请配置国网账号" : "请在模块设置中填写网上国网账号和密码")
-    : captureStatusMessage(captureStatus, compact);
+    : (!updateMode && !captureStatus)
+      ? (compact ? "请先更新数据" : "请在小组件画廊中运行“国家电网·更新数据”")
+      : captureStatusMessage(captureStatus, compact);
   return { type: "widget", padding: compact ? 5 : 16, gap: 7, backgroundColor: GREEN_DARK, children: [
     { type: "image", src: "sf-symbol:bolt.house.fill", width: compact ? 16 : 28, height: compact ? 16 : 28, color: WHITE },
     { type: "text", text: `国家电网 · v${VERSION}`, font: { size: compact ? "caption1" : "headline", weight: "bold" }, textColor: WHITE },
