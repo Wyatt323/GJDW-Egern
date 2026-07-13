@@ -4,12 +4,12 @@
 
 ## 一键在线导入
 
-[![一键导入 Egern](https://img.shields.io/badge/Egern-一键导入-00A88F?style=for-the-badge&logo=apple)](https://egernapp.com/modules/new?name=%E5%9B%BD%E5%AE%B6%E7%94%B5%E7%BD%91%E5%B0%8F%E7%BB%84%E4%BB%B6&url=https%3A%2F%2Fraw.githubusercontent.com%2FWyatt323%2FGJDW-Egern%2Fmain%2Fstate-grid.yaml)
+[![一键导入 Egern](https://img.shields.io/badge/Egern-一键导入-00A88F?style=for-the-badge&logo=apple)](https://egernapp.com/modules/new?name=%E5%9B%BD%E5%AE%B6%E7%94%B5%E7%BD%91%E5%B0%8F%E7%BB%84%E4%BB%B6&url=https%3A%2F%2Fraw.githubusercontent.com%2FWyatt323%2FGJDW-Egern%2Frefs%2Fheads%2Fmain%2Fstate-grid.yaml)
 
 请在安装了 Egern 的 iPhone 或 iPad 上点击按钮。也可以复制下面的模块地址，在 Egern 的“工具 → 模块 → +”中手动添加：
 
 ```text
-https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/main/state-grid.yaml
+https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid.yaml
 ```
 
 Egern 会默认每天检查模块更新；模块内的两个脚本也设置为每 24 小时检查一次更新。
