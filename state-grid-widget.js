@@ -1,5 +1,6 @@
 const STORAGE_KEY = "state_grid_widget_v1";
 const STATUS_KEY = "state_grid_capture_status_v1";
+const VERSION = "1.1.0";
 const GREEN = "#00A88F";
 const GREEN_DARK = "#00796B";
 const WHITE = "#FFFFFF";
@@ -7,6 +8,14 @@ const MUTED = "#FFFFFFB8";
 const CARD = "#FFFFFF1F";
 
 export default async function (ctx) {
+  try {
+    return await renderWidget(ctx);
+  } catch (error) {
+    return fatalWidget(ctx?.widgetFamily, error);
+  }
+}
+
+async function renderWidget(ctx) {
   const family = ctx.widgetFamily || "systemMedium";
   const env = ctx.env || {};
   const stored = ctx.storage.getJSON(STORAGE_KEY) || { accounts: [] };
@@ -199,9 +208,23 @@ function emptyWidget(family, captureStatus) {
   const message = captureStatusMessage(captureStatus, compact);
   return { type: "widget", padding: compact ? 5 : 16, gap: 7, backgroundColor: GREEN_DARK, children: [
     { type: "image", src: "sf-symbol:bolt.house.fill", width: compact ? 16 : 28, height: compact ? 16 : 28, color: WHITE },
-    { type: "text", text: "国家电网", font: { size: compact ? "caption1" : "headline", weight: "bold" }, textColor: WHITE },
+    { type: "text", text: `国家电网 · v${VERSION}`, font: { size: compact ? "caption1" : "headline", weight: "bold" }, textColor: WHITE },
     { type: "text", text: message, font: { size: "caption1" }, textColor: MUTED, maxLines: compact ? 1 : 3 },
   ] };
+}
+
+function fatalWidget(family, error) {
+  const compact = String(family || "").startsWith("accessory");
+  return {
+    type: "widget",
+    padding: compact ? 5 : 14,
+    gap: 6,
+    backgroundColor: "#8B1E1E",
+    children: [
+      { type: "text", text: `国家电网 · v${VERSION}`, font: { size: "headline", weight: "bold" }, textColor: WHITE, maxLines: 1 },
+      { type: "text", text: compact ? "运行错误" : `运行错误：${String(error?.message || error).slice(0, 160)}`, font: { size: "caption1" }, textColor: WHITE, maxLines: compact ? 1 : 4 },
+    ],
+  };
 }
 
 function captureStatusMessage(status, compact) {
