@@ -1,0 +1,56 @@
+name: "国家电网小组件"
+description: "在 Egern 小组件中显示网上国网余额、本月电量、电费及最近用电数据；数据仅保存在 Egern 本地。"
+author: "Codex"
+icon: "bolt.house.fill"
+
+env_schema:
+  ACCOUNT_INDEX:
+    name: "户号序号"
+    description: "多户时从 0 开始选择：第一个户号填 0，第二个填 1。"
+    default_value: "0"
+  DISPLAY_NAME:
+    name: "显示名称（可选）"
+    description: "如“家里”“父母家”，填写后会覆盖自动获取的名称。"
+  DATA_URL:
+    name: "兼容数据接口（可选）"
+    description: "可返回旧版网上国网小组件 JSON 数组的接口；不建议填写含明文密码的地址。"
+  OPEN_URL:
+    name: "点击跳转地址"
+    default_value: "https://www.95598.cn/osgweb/index"
+  ACCOUNT:
+    name: "户号（手动兜底）"
+  BALANCE:
+    name: "余额（手动兜底）"
+  MONTH_KWH:
+    name: "本月用电 kWh（手动兜底）"
+  MONTH_FEE:
+    name: "本月电费（手动兜底）"
+  LATEST_KWH:
+    name: "最近一日用电 kWh（手动兜底）"
+  OVERDUE:
+    name: "是否欠费"
+    options:
+      - "false"
+      - "true"
+
+scriptings:
+  - http_response:
+      name: "state-grid-capture"
+      match: "^https://www\\.95598\\.cn/"
+      script_url: "state-grid-capture.js"
+      body_required: true
+      max_size: 5242880
+      timeout: 10
+  - generic:
+      name: "state-grid-widget"
+      script_url: "state-grid-widget.js"
+      timeout: 20
+
+widgets:
+  - name: "国家电网"
+    script_name: "state-grid-widget"
+
+mitm:
+  hostnames:
+    - "www.95598.cn"
+
