@@ -1,5 +1,5 @@
 name: "国家电网小组件"
-description: "v1.2.0 · 在 Egern 小组件中显示网上国网余额、本月电量、电费及最近用电数据；数据仅保存在 Egern 本地。"
+description: "v1.3.0 · 使用网上国网账号主动查询余额、电量和电费，不再依赖抓取 App 域名。"
 author: "Wyatt323"
 homepage: "https://github.com/Wyatt323/GJDW-Egern"
 manual: "https://github.com/Wyatt323/GJDW-Egern#readme"
@@ -7,6 +7,18 @@ open_url: "https://github.com/Wyatt323/GJDW-Egern"
 icon: "bolt.house.fill"
 
 env_schema:
+  SGCC_USERNAME:
+    name: "网上国网账号"
+    description: "通常为登录手机号；仅保存在 Egern 模块环境变量中。"
+  SGCC_PASSWORD:
+    name: "网上国网密码"
+    description: "与 95598.cn / 网上国网 App 相同的登录密码。"
+  SGCC_DEBUG:
+    name: "调试日志"
+    options:
+      - "false"
+      - "true"
+    default_value: "false"
   ACCOUNT_INDEX:
     name: "户号序号"
     description: "多户时从 0 开始选择：第一个户号填 0，第二个填 1。"
@@ -36,37 +48,15 @@ env_schema:
       - "false"
       - "true"
 
-rules:
-  - and:
-      match:
-        - domain_suffix:
-            match: "95598.cn"
-        - protocol:
-            match: "quic"
-      policy: REJECT
-      name: "网上国网禁用 QUIC"
-  - domain_suffix:
-      match: "95598.cn"
-      policy: DIRECT
-      name: "网上国网直连"
-
 scriptings:
-  - http_response:
-      name: "state-grid-capture"
-      match: "^https://[^/]*95598\\.cn/"
-      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-capture.js?v=1.2.0"
-      update_interval: 86400
-      body_required: true
-      max_size: 5242880
-      timeout: 10
   - generic:
       name: "state-grid-widget"
-      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.2.0"
+      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.3.0"
       update_interval: 86400
-      timeout: 20
+      timeout: 120
   - generic:
       name: "state-grid-health"
-      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-health.js?v=1.2.0"
+      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-health.js?v=1.3.0"
       update_interval: 86400
       timeout: 10
 
@@ -75,12 +65,3 @@ widgets:
     script_name: "state-grid-widget"
   - name: "国家电网·诊断"
     script_name: "state-grid-health"
-
-mitm:
-  hostnames:
-    - "95598.cn"
-    - "*.95598.cn"
-
-http_captures:
-  - "95598.cn"
-  - "*.95598.cn"

@@ -1,131 +1,73 @@
 # 国家电网 Egern 小组件
 
-在 Egern 小组件中显示“网上国网”的电费余额、欠费状态、本月用电、本月电费和最近用电数据。支持主屏幕小、中、大尺寸，以及锁屏圆形、矩形和单行小组件。
+在 Egern 小组件中显示“网上国网”的余额、欠费状态、本月用电、本月电费和最近用电数据，支持多户号以及主屏幕、锁屏组件。
 
 ## 一键在线导入
 
-[![一键导入 Egern](https://img.shields.io/badge/Egern-一键导入-00A88F?style=for-the-badge&logo=apple)](https://egernapp.com/modules/new?name=%E5%9B%BD%E5%AE%B6%E7%94%B5%E7%BD%91%E5%B0%8F%E7%BB%84%E4%BB%B6&url=https%3A%2F%2Fraw.githubusercontent.com%2FWyatt323%2FGJDW-Egern%2Frefs%2Fheads%2Fmain%2Fstate-grid.yaml)
+[![一键导入 Egern](https://img.shields.io/badge/Egern-一键导入-00A88F?style=for-the-badge&logo=apple)](https://egernapp.com/modules/new?name=%E5%9B%BD%E5%AE%B6%E7%94%B5%E7%BD%91%E5%B0%8F%E7%BB%84%E4%BB%B6&url=https%3A%2F%2Fraw.githubusercontent.com%2FWyatt323%2FGJDW-Egern%2Frefs%2Fheads%2Fmain%2Fstate-grid.yaml%3Fv%3D1.3.0)
 
-请在安装了 Egern 的 iPhone 或 iPad 上点击按钮。也可以复制下面的模块地址，在 Egern 的“工具 → 模块 → +”中手动添加：
+也可以在 Egern“工具 → 模块 → +”中添加：
 
 ```text
-https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid.yaml
+https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid.yaml?v=1.3.0
 ```
 
-Egern 会默认每天检查模块更新；模块内的两个脚本也设置为每 24 小时检查一次更新。
+## v1.3.0 的重要变化
 
-## 首次使用
+国网与南网的实现不同。当前公开维护的国网查询脚本使用 `www.95598.cn` 网页接口，并以 `api.wsgw-rewrite.com` 作为代理软件中的虚拟触发地址；它不是通过监听官方 App 的业务请求取数。
 
-1. 导入后开启“国家电网小组件”模块。
-2. 按照 Egern 提示安装并信任 MitM 证书，允许解析 `www.95598.cn`。
-3. 保持 Egern 隧道开启，打开“网上国网”，进入电费余额、用电量和月度账单页面。
-4. 回到 Egern，进入“分析 → 小组件画廊”，预览“国家电网”。
-5. 在 iOS 主屏幕添加 Egern 小组件，长按小组件并选择“国家电网”。
+因此 v1.3.0 已删除旧版 `*.95598.cn` App 响应抓取、MitM 和 HTTP Capture 配置，改为由小组件主动登录查询。无需打开“网上国网”App，也无需安装 Egern CA 证书。
 
-## Egern 完整设置
+## 完整设置
 
-以下步骤必须全部完成；只导入模块不等于已经开启 HTTPS 解密。
+1. 在 Egern 中删除旧的“国家电网小组件”模块。
+2. 使用上方带 `v=1.3.0` 的链接重新导入并启用模块。
+3. 打开“工具 → 模块 → 国家电网小组件 → 环境变量”。
+4. 填写 `SGCC_USERNAME`：网上国网登录账号，通常是手机号。
+5. 填写 `SGCC_PASSWORD`：网上国网登录密码。
+6. `ACCOUNT_INDEX` 默认为 `0`；第二个户号填 `1`，依次类推。
+7. 启动 Egern，然后在“分析 → 小组件画廊”预览“国家电网”。首次查询可能需要 10～60 秒。
+8. 在 iOS 主屏幕添加 Egern 小组件，长按后选择“国家电网”。
 
-### 1. 生成并安装 Egern CA 证书
+账号设置完成后，不需要开启全局 MitM、HTTP 全局抓包，也不需要进入官方 App 刷新账单。
 
-1. 打开 Egern，进入“工具 → 证书”。
-2. 点击“生成新证书”，然后点击“安装新证书”。
-3. 跳转到 iOS 设置后安装描述文件。
-4. 打开“iOS 设置 → 通用 → 关于本机 → 证书信任设置”。
-5. 找到 Egern 生成的根证书，开启“完全信任”。
+## 常见提示
 
-如果这里没有开启完全信任，Egern 无法读取网上国网的 HTTPS 响应。
+- “请配置国网账号”：模块环境变量没有填写账号或密码。
+- “账号或密码未配置/不正确”：检查是否能在 `https://95598.cn` 使用同一账号密码登录。
+- “国网限制登录频率”：国网对每日登录次数有限制，请保留缓存并在次日重试，不要连续刷新。
+- “国网登录验证未通过”：验证码或风控未通过，稍后再试。
+- “查询引擎下载失败”：检查 Egern 是否能访问 `raw.githubusercontent.com`。
+- 组件完全空白：先预览“国家电网·诊断”，确认应显示 `v1.3.0`。
 
-### 2. 开启全局 MitM 和 HTTP 抓包
+成功登录后会缓存登录态，后续刷新通常不会重复完整登录。请避免短时间内频繁删除模块、清除数据或反复改密码。
 
-1. 回到 Egern，进入“全部连接”。
-2. 点击右上角“…”菜单。
-3. 开启“全局 MitM”。
-4. 再次打开“…”菜单，开启“HTTP 全局抓包”。
+## 可选设置
 
-模块自身还会加入以下目标：
+- `DISPLAY_NAME`：把账户名称显示为“家里”等自定义文字。
+- `ACCOUNT_INDEX`：多户号选择，从 `0` 开始。
+- `SGCC_DEBUG`：故障排查时设为 `true`，平时保持 `false`。
+- `DATA_URL`：兼容旧版国网小组件 JSON 接口。
+- `ACCOUNT`、`BALANCE`、`MONTH_KWH`、`MONTH_FEE`：手动数据兜底。
 
-```yaml
-mitm:
-  hostnames:
-    - "95598.cn"
-    - "*.95598.cn"
+## 数据与风险说明
 
-http_captures:
-  - "95598.cn"
-  - "*.95598.cn"
-```
+账号、密码、登录态和查询结果保存在 Egern 本地存储中，不会写入本 GitHub 仓库。小组件中的户号默认脱敏。
 
-### 3. 安装并启用模块
+主动查询适配层使用固定提交版本的 [Yuheng0101/X 网上国网脚本](https://github.com/Yuheng0101/X/tree/main/Tasks/95598)。该脚本访问国家电网 `www.95598.cn`，并依赖第三方服务 `api.120399.xyz` 完成部分加解密或登录验证流程。使用前请自行评估账号与隐私风险；如果不接受第三方依赖，请不要填写账号密码，可使用手动数据或自建 `DATA_URL`。
 
-1. 删除旧版本模块。
-2. 重新使用 README 顶部的一键导入按钮安装。
-3. 打开“工具 → 模块 → 国家电网小组件”。
-4. 确认模块开关为开启状态，描述中应显示 `v1.2.0`。
-5. 执行一次“更新资源”，确认三个远程脚本没有下载错误。
-
-模块会自动加入两条规则：拒绝 `95598.cn` 的 QUIC 连接以强制回退 TCP，并让其余 `95598.cn` 流量直连。
-
-### 4. 启动 Egern 隧道
-
-1. 返回 Egern 首页并启动服务。
-2. 首次启动时允许 iOS 添加 VPN 配置。
-3. 确认 Egern 显示正在运行，iOS 状态栏或控制中心能看到 VPN 状态。
-
-不要在采集过程中关闭 Egern 或切换到会绕过 Egern 的其他 VPN。
-
-### 5. 触发网上国网请求
-
-1. 完全退出官方“网上国网”App，再重新打开。
-2. 登录后进入具体户号。
-3. 依次进入“电费余额”“用电量”“月度账单”的详情页，并分别下拉刷新。
-4. 回到 Egern“全部连接”，搜索 `95598`。
-
-至少应看到一个 `95598.cn` 或其子域名的 HTTPS 连接。如果完全搜不到，说明网上国网当前使用了其他域名、流量没有经过 Egern，或 App 阻止了中间人解密；此时小组件脚本不可能收到数据。
-
-### 6. 验证小组件
-
-1. 进入“分析 → 小组件画廊”。
-2. 先预览“国家电网·诊断”，应显示 `v1.2.0` 和“组件脚本加载正常”。
-3. 再预览“国家电网”，查看它显示的采集状态。
-
-如果 Egern 的“全部连接”中存在网上国网连接，但主组件仍显示“未检测到网上国网请求”，请提供连接列表中的域名和主组件提示文字；URL 路径、请求体、户号、手机号和 Token 必须打码。
-
-## 多户与手动兜底
-
-在模块的 Env 设置中可以配置：
-
-- `ACCOUNT_INDEX`：多户序号，从 `0` 开始。
-- `DISPLAY_NAME`：自定义显示名称，例如“家里”。
-- `ACCOUNT`、`BALANCE`、`MONTH_KWH`、`MONTH_FEE`：接口未自动识别时手动填写。
-- `OVERDUE`：手动指定是否欠费。
-- `DATA_URL`：可选的兼容数据接口，不建议使用包含明文账号或密码的第三方地址。
-
-## 一直显示“未检测到数据”
-
-1. 在 Egern 的模块列表中打开本模块，执行一次“更新资源”；旧版本也可以删除后重新一键导入。
-2. 确认 Egern 隧道、模块开关和 MitM 均已开启，CA 证书已经安装并信任。
-3. 打开的是官方“网上国网”App，并进入“电费余额”“用电量”或“月度账单”的详情页，而不只是停留在首页。
-4. 回到 Egern 小组件画廊重新预览。新版组件会显示诊断结果：未检测到请求、响应非 JSON、字段未识别或采集出错。
-5. 如果提示“字段未识别”，请在反馈问题时说明所在省份，并附上 Egern 日志中以 `[国家电网]` 开头的内容；不要公开户号、手机号或登录凭证。
-
-如果主组件完全空白，请先在小组件画廊预览“国家电网·诊断”。诊断组件固定显示版本号、Egern 版本和当前时间，不依赖网上国网数据；若它也不显示，说明模块或远程脚本没有成功更新，而不是电费接口问题。
-
-## 数据与隐私
-
-模块不会要求或保存网上国网的账号密码。响应采集脚本仅在 Egern 本地提取小组件所需字段，并写入 Egern 本地存储，不会把电费或户号数据上传到第三方服务器。小组件中的户号默认会脱敏显示。
-
-由于网上国网各省接口存在差异，首次安装后需要在 App 中实际打开对应数据页面。如果接口结构发生变化，可以暂时使用 Env 手动数据兜底。
+本项目为非官方个人工具，仅供学习和个人查询使用。接口、验证码或风控策略变化都可能导致查询失效。
 
 ## 项目文件
 
 - `state-grid.yaml`：Egern 在线模块入口。
-- `state-grid-widget.js`：响应式 Widget DSL 界面。
-- `state-grid-capture.js`：网上国网响应数据本地采集器。
-- `state-grid-health.js`：不依赖业务数据的最小诊断组件。
+- `state-grid-widget.js`：主动查询适配层与 Widget DSL 界面。
+- `state-grid-health.js`：不依赖账号的诊断组件。
+- `state-grid-capture.js`：旧版响应采集器，仅保留用于历史兼容，v1.3.0 不再加载。
 
 ## 参考
 
+- [Egern JavaScript API](https://egernapp.com/zh-CN/docs/javascript-api/)
 - [Egern 小组件文档](https://egernapp.com/zh-CN/docs/configuration/widgets/)
 - [Egern 模块文档](https://egernapp.com/zh-CN/docs/configuration/modules/)
-- [Egern URL Scheme 文档](https://egernapp.com/zh-CN/docs/url-scheme/)
+- [网上国网重构脚本说明](https://github.com/Yuheng0101/X/blob/main/Tasks/95598/README.md)

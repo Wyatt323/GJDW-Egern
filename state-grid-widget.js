@@ -1,6 +1,8 @@
 const STORAGE_KEY = "state_grid_widget_v1";
 const STATUS_KEY = "state_grid_capture_status_v1";
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
+const PROVIDER_SOURCE_KEY = "state_grid_provider_source_v1";
+const PROVIDER_URL = "https://raw.githubusercontent.com/Yuheng0101/X/9ea8da5ce1d83572e937fa5d6882edb8382c4c30/Tasks/95598/95598.js";
 const GREEN = "#00A88F";
 const GREEN_DARK = "#00796B";
 const WHITE = "#FFFFFF";
@@ -22,10 +24,24 @@ async function renderWidget(ctx) {
   const captureStatus = ctx.storage.getJSON(STATUS_KEY) || null;
   let accounts = Array.isArray(stored.accounts) ? stored.accounts : [];
 
+  if (env.SGCC_USERNAME && env.SGCC_PASSWORD) {
+    try {
+      const remote = normalizePayload(await fetchOfficialData(ctx, env));
+      if (remote.length) {
+        accounts = mergeAccounts(accounts, remote);
+        ctx.storage.setJSON(STORAGE_KEY, { accounts, updatedAt: new Date().toISOString(), source: "网上国网网页接口" });
+        ctx.storage.setJSON(STATUS_KEY, { kind: "success", hitAt: new Date().toISOString(), message: `已主动查询 ${remote.length} 个户号` });
+      }
+    } catch (error) {
+      ctx.storage.setJSON(STATUS_KEY, { kind: "error", hitAt: new Date().toISOString(), message: providerError(error) });
+      console.log(`[国家电网] 主动查询失败: ${String(error)}`);
+    }
+  }
+
   if (env.DATA_URL) {
     try {
       const response = await ctx.http.get(env.DATA_URL, { timeout: 12000 });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (response.status < 200 || response.status >= 300) throw new Error(`HTTP ${response.status}`);
       const remote = normalizePayload(await response.json());
       if (remote.length) {
         accounts = mergeAccounts(accounts, remote);
@@ -41,13 +57,119 @@ async function renderWidget(ctx) {
   const index = Math.max(0, Number.parseInt(env.ACCOUNT_INDEX || "0", 10) || 0);
   const account = accounts[index] || accounts[0] || null;
 
-  if (!account) return emptyWidget(family, captureStatus);
+  if (!account) return emptyWidget(family, ctx.storage.getJSON(STATUS_KEY) || captureStatus, env);
   if (env.DISPLAY_NAME) account.name = env.DISPLAY_NAME;
   if (family === "accessoryInline") return inlineWidget(account);
   if (family === "accessoryCircular") return circularWidget(account);
   if (family === "accessoryRectangular") return lockWidget(account);
   if (family === "systemSmall") return smallWidget(account, env);
   return mediumWidget(account, env, family === "systemLarge" || family === "systemExtraLarge");
+}
+
+async function fetchOfficialData(ctx, env) {
+  let source = ctx.storage.get(PROVIDER_SOURCE_KEY);
+  if (!source || source.length < 50000) {
+    const response = await ctx.http.get(PROVIDER_URL, { timeout: 20000 });
+    if (response.status < 200 || response.status >= 300) throw new Error(`查询引擎下载失败：HTTP ${response.status}`);
+    source = await response.text();
+    if (!source || source.length < 50000) throw new Error("查询引擎内容不完整");
+    try { ctx.storage.set(PROVIDER_SOURCE_KEY, source); }
+    catch (_) { console.log("[国家电网] 查询引擎缓存写入失败，本次继续运行"); }
+  }
+  return runLegacyProvider(ctx, source, env);
+}
+
+function runLegacyProvider(ctx, source, env) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let lastNotice = "";
+    let timer;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const response = result?.response || result;
+      if (!response?.body) {
+        reject(new Error(lastNotice || "查询脚本没有返回数据"));
+        return;
+      }
+      try { resolve(JSON.parse(response.body)); }
+      catch (_) { reject(new Error("查询脚本返回的数据无法解析")); }
+    };
+    timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        reject(new Error("查询超时，请稍后再试"));
+      }
+    }, 110000);
+
+    globalThis.$request = { method: "GET", url: "https://api.wsgw-rewrite.com/electricity/bill/all" };
+    globalThis.Egern = globalThis.Egern || {};
+    globalThis.$argument = {
+      username: String(env.SGCC_USERNAME),
+      password: String(env.SGCC_PASSWORD),
+      service: "true",
+      debug: env.SGCC_DEBUG || "false",
+      notify_all_accounts: "true",
+    };
+    globalThis.$persistentStore = {
+      read: (key) => ctx.storage.get(`provider:${key}`),
+      write: (value, key) => {
+        try {
+          if (value == null) ctx.storage.delete(`provider:${key}`);
+          else ctx.storage.set(`provider:${key}`, String(value));
+          return true;
+        } catch (_) { return false; }
+      },
+    };
+    globalThis.$notification = {
+      post: (title, subtitle, body) => {
+        lastNotice = [title, subtitle, body].filter(Boolean).join("：");
+        console.log(`[国家电网] ${lastNotice}`);
+      },
+    };
+    globalThis.$done = finish;
+    globalThis.$httpClient = legacyHttpClient(ctx);
+
+    try { (0, eval)(source); }
+    catch (error) {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      }
+    }
+  });
+}
+
+function legacyHttpClient(ctx) {
+  const call = (method) => (input, callback) => {
+    const request = typeof input === "string" ? { url: input } : { ...input };
+    const timeout = Math.max(1000, Math.min(120000, Number(request.timeout || 15) * 1000));
+    const options = {
+      headers: request.headers || {},
+      body: request.body,
+      timeout,
+      redirect: request["auto-redirect"] === false ? "manual" : "follow",
+      credentials: "include",
+    };
+    ctx.http[method](request.url, options).then(async (response) => {
+      const body = await response.text();
+      callback(null, { status: response.status, headers: response.headers }, body);
+    }).catch((error) => callback(error, null, null));
+  };
+  return {
+    get: call("get"), post: call("post"), put: call("put"), delete: call("delete"),
+    patch: call("patch"), head: call("head"), options: call("options"),
+  };
+}
+
+function providerError(error) {
+  const message = String(error?.message || error || "未知错误");
+  if (/密码|账号/.test(message)) return "账号或密码未配置/不正确";
+  if (/频繁|-100/.test(message)) return "国网限制登录频率，请明天再试";
+  if (/验证码|风控/.test(message)) return "国网登录验证未通过，请稍后重试";
+  return message.slice(0, 90);
 }
 
 function normalizePayload(payload) {
@@ -61,12 +183,12 @@ function normalizeAccount(item) {
   const user = item.userInfo || findObject(item, ["consNo_dst", "consName_dst"]) || {};
   const daily = item.dayElecQuantity31 || item.dayElecQuantity || findObject(item, ["sevenEleList"]) || {};
   const monthly = item.monthElecQuantity || findObject(item, ["mothEleList"]) || {};
-  const days = (daily.sevenEleList || []).map((row) => ({
+  const days = (daily.sevenEleList || daily.result || []).map((row) => ({
     day: text(row.day || row.date),
     kwh: number(row.dayElePq ?? row.power ?? row.electricity),
   })).filter((row) => row.kwh != null);
-  const months = (monthly.mothEleList || []).map((row) => ({
-    month: text(row.month || row.date),
+  const months = (monthly.mothEleList || monthly.result || []).map((row) => ({
+    month: text(row.month || row.date || row.monthEleDate),
     kwh: number(row.monthEleNum ?? row.power),
     fee: number(row.monthEleCost ?? row.charge),
   }));
@@ -84,8 +206,8 @@ function normalizeAccount(item) {
     address: text(user.eleAddress || user.address),
     balance: balanceRaw ?? sumMoney,
     overdue,
-    monthKwh: currentMonthKwh || number(item.monthKwh) || latestMonth.kwh,
-    monthFee: number(item.monthFee) ?? latestMonth.fee,
+    monthKwh: currentMonthKwh ?? number(daily.totalPower) ?? number(item.monthKwh) ?? latestMonth.kwh,
+    monthFee: number(daily.totalElectricity) ?? number(item.monthFee) ?? latestMonth.fee,
     yearKwh: number(monthly?.dataInfo?.totalEleNum ?? item.yearKwh),
     yearFee: number(monthly?.dataInfo?.totalEleCost ?? item.yearFee),
     latestKwh: days.length ? days[days.length - 1].kwh : number(item.latestKwh),
@@ -203,9 +325,11 @@ function recentDays(days) {
   ] };
 }
 
-function emptyWidget(family, captureStatus) {
+function emptyWidget(family, captureStatus, env) {
   const compact = family.startsWith("accessory");
-  const message = captureStatusMessage(captureStatus, compact);
+  const message = (!env.SGCC_USERNAME || !env.SGCC_PASSWORD)
+    ? (compact ? "请配置国网账号" : "请在模块设置中填写网上国网账号和密码")
+    : captureStatusMessage(captureStatus, compact);
   return { type: "widget", padding: compact ? 5 : 16, gap: 7, backgroundColor: GREEN_DARK, children: [
     { type: "image", src: "sf-symbol:bolt.house.fill", width: compact ? 16 : 28, height: compact ? 16 : 28, color: WHITE },
     { type: "text", text: `国家电网 · v${VERSION}`, font: { size: compact ? "caption1" : "headline", weight: "bold" }, textColor: WHITE },
@@ -228,11 +352,10 @@ function fatalWidget(family, error) {
 }
 
 function captureStatusMessage(status, compact) {
-  if (!status) return compact ? "未检测到数据" : "未检测到网上国网请求，请确认 Egern 隧道、模块和 MitM 已开启";
-  if (status.kind === "non-json") return compact ? "响应非 JSON" : "已检测到网上国网请求，但响应不是 JSON；请再打开用电量或账单详情";
-  if (status.kind === "unrecognized") return compact ? "字段未识别" : "已捕获网上国网响应，但当前省份的接口字段尚未识别";
-  if (status.kind === "error") return compact ? "采集出错" : `采集脚本出错：${String(status.message || "未知错误").slice(0, 80)}`;
-  return compact ? "等待账户数据" : String(status.message || "已命中请求，等待账户数据");
+  if (!status) return compact ? "等待查询" : "尚未完成首次查询，请刷新小组件";
+  if (status.kind === "error") return compact ? "查询失败" : `查询失败：${String(status.message || "未知错误").slice(0, 80)}`;
+  if (status.kind === "success") return compact ? "已更新" : String(status.message || "网上国网数据已更新");
+  return compact ? "等待账户数据" : String(status.message || "正在等待网上国网返回数据");
 }
 
 function inlineWidget(a) { return { type: "widget", children: [{ type: "text", text: `⚡ ${a.overdue ? "欠费" : "余额"} ${money(a.balance)} · 本月 ${kwh(a.monthKwh)}` }] }; }
