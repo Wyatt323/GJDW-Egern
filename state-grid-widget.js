@@ -1,6 +1,6 @@
 const STORAGE_KEY = "state_grid_widget_v1";
 const STATUS_KEY = "state_grid_capture_status_v1";
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 const GREEN = "#00A88F";
 const GREEN_DARK = "#00796B";
 const WHITE = "#FFFFFF";
