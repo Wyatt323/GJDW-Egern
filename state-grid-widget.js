@@ -1,5 +1,5 @@
 const STORAGE_KEY = "state_grid_widget_v2";
-const STATUS_KEY = "state_grid_capture_status_v1";
+const STATUS_KEY = "state_grid_capture_status_v2";
 const VERSION = "1.5.0";
 const PROVIDER_SOURCE_KEY = "state_grid_provider_source_v1";
 const PROVIDER_URL = "https://raw.githubusercontent.com/Yuheng0101/X/9ea8da5ce1d83572e937fa5d6882edb8382c4c30/Tasks/95598/95598.js";

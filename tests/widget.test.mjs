@@ -122,6 +122,31 @@ function testLegacyMonthFeeIsNotRelabeledAsPreviousBill() {
   assert.equal(account.previousMonthFee, null);
 }
 
+async function testStaleV1SuccessStatusDoesNotClaimV2DataWasUpdated() {
+  const { widgetMain } = loadWidgetInternals();
+  const values = new Map([
+    ['state_grid_capture_status_v1', {
+      kind: 'success',
+      hitAt: '2026-07-12T12:00:00+08:00',
+      message: '网上国网数据已更新',
+    }],
+  ]);
+  const result = await widgetMain({
+    widgetFamily: 'systemMedium',
+    env: { SGCC_USERNAME: 'tester', SGCC_PASSWORD: 'secret' },
+    storage: {
+      getJSON: (key) => values.get(key) || null,
+      setJSON: (key, value) => values.set(key, value),
+      get: (key) => values.get(key) || null,
+      set: (key, value) => values.set(key, value),
+      delete: (key) => values.delete(key),
+    },
+  });
+  const serialized = JSON.stringify(result);
+  assert.match(serialized, /运行.*更新数据|等待账户数据/);
+  assert.doesNotMatch(serialized, /网上国网数据已更新|已更新/);
+}
+
 async function renderManualWidget(family) {
   const { widgetMain } = loadWidgetInternals();
   const values = new Map();
@@ -167,6 +192,7 @@ testNormalizedAccountExposesPreviousMonthBill();
 testJanuaryProviderPayloadUsesLastYearDecember();
 testFlatProviderPayloadIsNormalized();
 testLegacyMonthFeeIsNotRelabeledAsPreviousBill();
+await testStaleV1SuccessStatusDoesNotClaimV2DataWasUpdated();
 await testMediumWidgetRendersAllRequestedMetrics();
 await testLockScreenWidgetsIncludePreviousBill();
 console.log('widget tests passed');
