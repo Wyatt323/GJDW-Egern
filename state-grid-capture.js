@@ -1,4 +1,5 @@
 const STORAGE_KEY = "state_grid_widget_v1";
+const STATUS_KEY = "state_grid_capture_status_v1";
 
 export default async function (ctx) {
   let body = "";
@@ -11,10 +12,21 @@ export default async function (ctx) {
       // Some GET requests have no JSON body; the response can still be harvested.
     }
     body = await ctx.response.text();
-    if (!body || !/^[\s]*[\[{]/.test(body)) return { body };
+    const baseStatus = {
+      hitAt: new Date().toISOString(),
+      url: String(ctx.request?.url || ""),
+      httpStatus: Number(ctx.response?.status || 0),
+    };
+    if (!body || !/^[\s\uFEFF]*[\[{]/.test(body)) {
+      setStatus(ctx, { ...baseStatus, kind: "non-json", message: "已命中请求，但响应不是 JSON" });
+      return { body };
+    }
     const payload = JSON.parse(body);
     const fragments = collectFragments(payload);
-    if (!fragments.length) return { body };
+    if (!fragments.length) {
+      setStatus(ctx, { ...baseStatus, kind: "unrecognized", message: "已捕获 JSON，但未识别到电费字段" });
+      return { body };
+    }
 
     const saved = ctx.storage.getJSON(STORAGE_KEY) || { accounts: [] };
     const accounts = Array.isArray(saved.accounts) ? saved.accounts : [];
@@ -24,11 +36,21 @@ export default async function (ctx) {
       updatedAt: new Date().toISOString(),
       source: "网上国网本地响应",
     });
+    setStatus(ctx, { ...baseStatus, kind: "success", message: `已更新 ${accounts.length} 个户号`, accountCount: accounts.length });
     console.log(`[国家电网] 已更新 ${accounts.length} 个户号的小组件缓存`);
   } catch (error) {
+    setStatus(ctx, { hitAt: new Date().toISOString(), kind: "error", message: String(error) });
     console.log(`[国家电网] 响应采集跳过: ${String(error)}`);
   }
   return { body };
+}
+
+function setStatus(ctx, value) {
+  try {
+    ctx.storage.setJSON(STATUS_KEY, value);
+  } catch (_) {
+    // Diagnostic status must never interrupt the original response.
+  }
 }
 
 function collectFragments(root) {

@@ -39,7 +39,7 @@ env_schema:
 scriptings:
   - http_response:
       name: "state-grid-capture"
-      match: "^https://www\\.95598\\.cn/"
+      match: "^https://[^/]*95598\\.cn/"
       script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-capture.js"
       update_interval: 86400
       body_required: true
@@ -57,4 +57,9 @@ widgets:
 
 mitm:
   hostnames:
-    - "www.95598.cn"
+    - "95598.cn"
+    - "*.95598.cn"
+
+http_captures:
+  - "95598.cn"
+  - "*.95598.cn"
