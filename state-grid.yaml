@@ -1,5 +1,5 @@
 name: "国家电网小组件"
-description: "v1.4.0 · 显示与耗时查询分离；先运行“国家电网·更新数据”，主组件随后读取本地缓存。"
+description: "v1.5.0 · 账号密码登录，显示当前余额、本月用电量和上月账单。"
 author: "Wyatt323"
 homepage: "https://github.com/Wyatt323/GJDW-Egern"
 manual: "https://github.com/Wyatt323/GJDW-Egern#readme"
@@ -12,7 +12,7 @@ env_schema:
     description: "通常为登录手机号；仅保存在 Egern 模块环境变量中。"
   SGCC_PASSWORD:
     name: "网上国网密码"
-    description: "与 95598.cn / 网上国网 App 相同的登录密码。"
+    description: "登录时会交由第三方适配服务 api.120399.xyz 处理；填写前请阅读项目风险说明。"
   SGCC_DEBUG:
     name: "调试日志"
     options:
@@ -38,8 +38,8 @@ env_schema:
     name: "余额（手动兜底）"
   MONTH_KWH:
     name: "本月用电 kWh（手动兜底）"
-  MONTH_FEE:
-    name: "本月电费（手动兜底）"
+  LAST_MONTH_BILL:
+    name: "上月账单（手动兜底）"
   LATEST_KWH:
     name: "最近一日用电 kWh（手动兜底）"
   OVERDUE:
@@ -51,14 +51,14 @@ env_schema:
 scriptings:
   - generic:
       name: "state-grid-widget"
-      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.4.0"
+      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.5.0"
       update_interval: 86400
       timeout: 10
       env:
         RUN_MODE: "view"
   - generic:
       name: "state-grid-updater"
-      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.4.0"
+      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.5.0"
       update_interval: 86400
       timeout: 100
       env:
@@ -66,14 +66,14 @@ scriptings:
   - schedule:
       name: "state-grid-auto-update"
       cron: "15 8,18 * * *"
-      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.4.0"
+      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.5.0"
       update_interval: 86400
       timeout: 100
       env:
         RUN_MODE: "update"
   - generic:
       name: "state-grid-health"
-      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-health.js?v=1.4.0"
+      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-health.js?v=1.5.0"
       update_interval: 86400
       timeout: 10
 

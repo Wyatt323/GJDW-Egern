@@ -1,6 +1,6 @@
-const STORAGE_KEY = "state_grid_widget_v1";
+const STORAGE_KEY = "state_grid_widget_v2";
 const STATUS_KEY = "state_grid_capture_status_v1";
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 const PROVIDER_SOURCE_KEY = "state_grid_provider_source_v1";
 const PROVIDER_URL = "https://raw.githubusercontent.com/Yuheng0101/X/9ea8da5ce1d83572e937fa5d6882edb8382c4c30/Tasks/95598/95598.js";
 const GREEN = "#00A88F";
@@ -180,46 +180,63 @@ function normalizePayload(payload) {
 
 function normalizeAccount(item) {
   if (!item || typeof item !== "object") return null;
-  const bill = item.eleBill || item.bill || findObject(item, ["sumMoney", "accountBalance"] ) || {};
+  const bill = item.eleBill || item.bill || findObject(item, ["sumMoney", "accountBalance"]) || {};
   const user = item.userInfo || findObject(item, ["consNo_dst", "consName_dst"]) || {};
   const daily = item.dayElecQuantity31 || item.dayElecQuantity || findObject(item, ["sevenEleList"]) || {};
   const monthly = item.monthElecQuantity || findObject(item, ["mothEleList"]) || {};
-  const days = (daily.sevenEleList || daily.result || []).map((row) => ({
+  const lastYearMonthly = item.lastYearElecQuantity || {};
+  const dayRows = daily.sevenEleList || daily.result || item.recentUsageList || [];
+  const days = dayRows.map((row) => ({
     day: text(row.day || row.date),
-    kwh: number(row.dayElePq ?? row.power ?? row.electricity),
+    kwh: number(row.dayElePq ?? row.power ?? row.electricity ?? row.value ?? row.formattedValue),
   })).filter((row) => row.kwh != null);
-  const months = (monthly.mothEleList || monthly.result || []).map((row) => ({
+  const monthRows = [
+    ...(lastYearMonthly.mothEleList || lastYearMonthly.monthEleList || lastYearMonthly.result || []),
+    ...(monthly.mothEleList || monthly.monthEleList || monthly.result || []),
+  ];
+  const months = monthRows.map((row) => ({
     month: text(row.month || row.date || row.monthEleDate),
     kwh: number(row.monthEleNum ?? row.power),
     fee: number(row.monthEleCost ?? row.charge),
   }));
-  const latestMonth = months.filter((row) => row.kwh != null || row.fee != null).slice(-1)[0] || {};
+  const previousBill = previousMonthRecord(months);
+  const flatPreviousKwh = number(item.previousMonthUsage ?? item.previousMonthKwh);
+  const flatPreviousFee = number(item.previousMonthCost ?? item.previousMonthFee ?? item.lastMonthBill);
+  const hasFlatPreviousBill = flatPreviousKwh != null || flatPreviousFee != null;
   const currentMonthKwh = sumCurrentMonth(days);
-  const balanceRaw = number(bill.accountBalance ?? bill.balance);
+  const balanceRaw = number(bill.accountBalance ?? bill.balance ?? item.balance);
   const sumMoney = number(bill.sumMoney ?? bill.amount);
-  const overdue = Boolean(item.arrearsOfFees) || number(bill.historyOwe) > 0 || (sumMoney != null && sumMoney < 0);
-  const accountNumber = text(user.consNo_dst || user.consNo || bill.consNo || item.accountNumber);
+  const overdue = Boolean(item.arrearsOfFees || item.isOwe) || number(bill.historyOwe) > 0 || (sumMoney != null && sumMoney < 0);
+  const accountNumber = text(user.consNo_dst || user.consNo || bill.consNo || item.consNo || item.accountNumber);
+  const previousMonthFee = previousBill?.fee ?? flatPreviousFee;
 
-  if (!accountNumber && balanceRaw == null && sumMoney == null && !days.length && !months.length) return null;
+  if (!accountNumber && balanceRaw == null && sumMoney == null && !days.length && !months.length && previousMonthFee == null) return null;
   return {
     accountNumber,
-    name: text(user.consName_dst || user.consName || item.name || "国家电网"),
-    address: text(user.eleAddress || user.address),
+    name: text(user.consName_dst || user.consName || item.consName || item.name || "国家电网"),
+    address: text(user.eleAddress || user.address || item.address),
     balance: balanceRaw ?? sumMoney,
     overdue,
-    monthKwh: currentMonthKwh ?? number(daily.totalPower) ?? number(item.monthKwh) ?? latestMonth.kwh,
-    monthFee: number(daily.totalElectricity) ?? number(item.monthFee) ?? latestMonth.fee,
-    yearKwh: number(monthly?.dataInfo?.totalEleNum ?? item.yearKwh),
-    yearFee: number(monthly?.dataInfo?.totalEleCost ?? item.yearFee),
+    monthKwh: currentMonthKwh
+      ?? number(bill.totalPq)
+      ?? number(item.currentUsage ?? item.monthKwh)
+      ?? number(daily.totalPq ?? daily.totalPower),
+    previousMonth: previousBill?.month || (hasFlatPreviousBill ? previousMonthLabel() : text(item.previousMonth)),
+    previousMonthKwh: previousBill?.kwh ?? flatPreviousKwh,
+    previousMonthFee,
+    // v2 cache alias only; legacy monthFee input is intentionally not trusted as an "上月账单".
+    monthFee: previousMonthFee,
+    yearKwh: number(monthly?.dataInfo?.totalEleNum ?? item.annualUsage ?? item.yearKwh),
+    yearFee: number(monthly?.dataInfo?.totalEleCost ?? item.annualCost ?? item.yearFee),
     latestKwh: days.length ? days[days.length - 1].kwh : number(item.latestKwh),
     latestDay: days.length ? days[days.length - 1].day : text(item.latestDay),
     days,
-    updatedAt: text(bill.date || item.updatedAt || new Date().toISOString()),
+    updatedAt: text(bill.date || item.billDate || item.updatedAt || new Date().toISOString()),
   };
 }
 
 function accountFromEnv(env) {
-  const values = [env.BALANCE, env.MONTH_KWH, env.MONTH_FEE, env.YEAR_KWH, env.YEAR_FEE];
+  const values = [env.BALANCE, env.MONTH_KWH, env.LAST_MONTH_BILL, env.YEAR_KWH, env.YEAR_FEE];
   if (!env.ACCOUNT && !values.some((value) => value != null && value !== "")) return null;
   return {
     accountNumber: text(env.ACCOUNT),
@@ -228,7 +245,9 @@ function accountFromEnv(env) {
     balance: number(env.BALANCE),
     overdue: env.OVERDUE === "true",
     monthKwh: number(env.MONTH_KWH),
-    monthFee: number(env.MONTH_FEE),
+    previousMonth: env.LAST_MONTH_BILL ? previousMonthLabel() : "",
+    previousMonthFee: number(env.LAST_MONTH_BILL),
+    monthFee: number(env.LAST_MONTH_BILL),
     yearKwh: number(env.YEAR_KWH),
     yearFee: number(env.YEAR_FEE),
     latestKwh: number(env.LATEST_KWH),
@@ -247,7 +266,7 @@ function mediumWidget(a, env, expanded) {
       type: "stack", direction: "row", gap: 10, children: [
         metric("电费余额", money(a.balance), "sf-symbol:yensign.circle.fill", a.overdue ? "#FFCCCB" : WHITE),
         metric("本月用电", kwh(a.monthKwh), "sf-symbol:bolt.fill", WHITE),
-        metric("本月电费", money(a.monthFee), "sf-symbol:creditcard.fill", WHITE),
+        metric("上月账单", money(a.previousMonthFee), "sf-symbol:creditcard.fill", WHITE),
       ],
     },
     { type: "spacer" },
@@ -283,7 +302,7 @@ function smallWidget(a, env) {
       { type: "text", text: money(a.balance), font: { size: "title", weight: "bold" }, textColor: WHITE, maxLines: 1, minScale: 0.55 },
       { type: "spacer" },
       { type: "text", text: `本月 ${kwh(a.monthKwh)}`, font: { size: "caption1", weight: "medium" }, textColor: WHITE, maxLines: 1, minScale: 0.7 },
-      { type: "text", text: mask(a.accountNumber), font: { size: "caption2" }, textColor: MUTED, maxLines: 1 },
+      { type: "text", text: `上月账单 ${money(a.previousMonthFee)}`, font: { size: "caption2" }, textColor: MUTED, maxLines: 1, minScale: 0.7 },
     ],
   };
 }
@@ -361,9 +380,9 @@ function captureStatusMessage(status, compact) {
   return compact ? "等待账户数据" : String(status.message || "正在等待网上国网返回数据");
 }
 
-function inlineWidget(a) { return { type: "widget", children: [{ type: "text", text: `⚡ ${a.overdue ? "欠费" : "余额"} ${money(a.balance)} · 本月 ${kwh(a.monthKwh)}` }] }; }
+function inlineWidget(a) { return { type: "widget", children: [{ type: "text", text: `⚡ 余额 ${money(a.balance)} · 本月 ${kwh(a.monthKwh)} · 上月 ${money(a.previousMonthFee)}` }] }; }
 function circularWidget(a) { return { type: "widget", children: [{ type: "image", src: "sf-symbol:bolt.fill" }, { type: "text", text: format(a.monthKwh, 0), font: { size: "caption1", weight: "bold" }, maxLines: 1 }] }; }
-function lockWidget(a) { return { type: "widget", gap: 2, children: [{ type: "text", text: `⚡ ${a.overdue ? "电费欠费" : "国家电网"}`, font: { size: "caption1", weight: "bold" }, maxLines: 1 }, { type: "text", text: `余额 ${money(a.balance)}  本月 ${kwh(a.monthKwh)}`, font: { size: "caption2" }, maxLines: 1 }] }; }
+function lockWidget(a) { return { type: "widget", gap: 2, children: [{ type: "text", text: `⚡ ${a.overdue ? "电费欠费" : "国家电网"}`, font: { size: "caption1", weight: "bold" }, maxLines: 1 }, { type: "text", text: `余额 ${money(a.balance)} · 本月 ${kwh(a.monthKwh)} · 上月 ${money(a.previousMonthFee)}`, font: { size: "caption2" }, maxLines: 1, minScale: 0.6 }] }; }
 
 function findObject(root, keys) {
   const queue = [root];
@@ -393,6 +412,32 @@ function sumCurrentMonth(days) {
   const prefix = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
   const matched = days.filter((x) => text(x.day).replace(/\D/g, "").startsWith(prefix));
   return matched.length ? matched.reduce((sum, x) => sum + (x.kwh || 0), 0) : null;
+}
+
+function previousMonthRecord(months, now = new Date()) {
+  const targetKey = previousMonthKey(now);
+  const row = (months || []).find((item) => monthKey(item?.month) === targetKey);
+  if (!row) return null;
+  return {
+    month: `${targetKey.slice(0, 4)}-${targetKey.slice(4)}`,
+    kwh: number(row.kwh),
+    fee: number(row.fee),
+  };
+}
+
+function previousMonthLabel(now = new Date()) {
+  const key = previousMonthKey(now);
+  return `${key.slice(0, 4)}-${key.slice(4)}`;
+}
+
+function previousMonthKey(now = new Date()) {
+  const target = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return `${target.getFullYear()}${String(target.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthKey(value) {
+  const digits = text(value).replace(/\D/g, "");
+  return digits.length >= 6 ? digits.slice(0, 6) : "";
 }
 
 function number(value) { if (value == null || value === "" || value === "-") return null; const n = Number(String(value).replace(/,/g, "")); return Number.isFinite(n) ? n : null; }
