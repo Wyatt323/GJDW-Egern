@@ -1,6 +1,9 @@
 name: "国家电网小组件"
 description: "在 Egern 小组件中显示网上国网余额、本月电量、电费及最近用电数据；数据仅保存在 Egern 本地。"
-author: "Codex"
+author: "Wyatt323"
+homepage: "https://github.com/Wyatt323/GJDW-Egern"
+manual: "https://github.com/Wyatt323/GJDW-Egern#readme"
+open_url: "https://github.com/Wyatt323/GJDW-Egern"
 icon: "bolt.house.fill"
 
 env_schema:
@@ -37,13 +40,15 @@ scriptings:
   - http_response:
       name: "state-grid-capture"
       match: "^https://www\\.95598\\.cn/"
-      script_url: "state-grid-capture.js"
+      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/main/state-grid-capture.js"
+      update_interval: 86400
       body_required: true
       max_size: 5242880
       timeout: 10
   - generic:
       name: "state-grid-widget"
-      script_url: "state-grid-widget.js"
+      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/main/state-grid-widget.js"
+      update_interval: 86400
       timeout: 20
 
 widgets:
@@ -53,4 +58,3 @@ widgets:
 mitm:
   hostnames:
     - "www.95598.cn"
-
