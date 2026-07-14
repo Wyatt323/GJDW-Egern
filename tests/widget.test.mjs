@@ -320,6 +320,53 @@ function testReleaseVersionIsConsistent() {
   }
 }
 
+async function testTimeoutWatchdogUsesShortTicksForEgern() {
+  const delays = [];
+  const { runLegacyProvider } = loadWidgetInternals(
+    '2026-07-13T12:00:00+08:00',
+    { setTimeout: (fn, delay) => { delays.push(delay); return setTimeout(fn, 0); }, clearTimeout },
+  );
+  const ctx = {
+    storage: { getJSON: () => null, setJSON: () => {}, get: () => null, set: () => {}, delete: () => {} },
+    http: {},
+  };
+  await assert.rejects(
+    () => runLegacyProvider(ctx, '', { SGCC_USERNAME: 'tester', SGCC_PASSWORD: 'secret' }),
+    /查询超时/,
+  );
+  assert.ok(delays.length >= 8, 'watchdog should accumulate timeout over multiple short ticks');
+  assert.ok(delays.every((delay) => delay <= 10000), `Egern-safe timer ticks expected, got ${delays.join(',')}`);
+}
+
+async function testLateHttpResponseAfterTimeoutDoesNotAppendDiagnostics() {
+  const { runLegacyProvider } = loadWidgetInternals(
+    '2026-07-13T12:00:00+08:00',
+    { setTimeout: (fn) => setTimeout(fn, 0), clearTimeout },
+  );
+  const values = new Map();
+  let resolveRequest;
+  const ctx = {
+    storage: {
+      getJSON: (key) => values.get(key) || null,
+      setJSON: (key, value) => values.set(key, value),
+      get: (key) => values.get(key) || null,
+      set: (key, value) => values.set(key, value),
+      delete: (key) => values.delete(key),
+    },
+    http: { get: () => new Promise((resolve) => { resolveRequest = resolve; }) },
+  };
+  const source = `$httpClient.get('https://www.95598.cn/private', function () {});`;
+  await assert.rejects(
+    () => runLegacyProvider(ctx, source, { SGCC_USERNAME: 'tester', SGCC_PASSWORD: 'secret' }),
+    /查询超时/,
+  );
+  resolveRequest({ status: 200, headers: { 'content-type': 'application/json' }, text: async () => '{"late":true}' });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const serialized = JSON.stringify(values.get('state_grid_diagnostic_v1'));
+  assert.match(serialized, /查询超时：停在 www\.95598\.cn/);
+  assert.doesNotMatch(serialized, /HTTP 200/);
+}
+
 async function renderManualWidget(family) {
   const { widgetMain } = loadWidgetInternals();
   const values = new Map();
@@ -373,6 +420,8 @@ await testNetworkFailurePersistsOnlySafeHostAndCategory();
 await testZeroResultReplacesStaleSuccessStatus();
 await testTimeoutPersistsActiveSafeHost();
 await testSuccessfulResponseRecordsOnlyTypeAndSize();
+await testTimeoutWatchdogUsesShortTicksForEgern();
+await testLateHttpResponseAfterTimeoutDoesNotAppendDiagnostics();
 testReleaseVersionIsConsistent();
 await testMediumWidgetRendersAllRequestedMetrics();
 await testLockScreenWidgetsIncludePreviousBill();

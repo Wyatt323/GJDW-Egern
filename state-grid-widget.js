@@ -1,6 +1,6 @@
 const STORAGE_KEY = "state_grid_widget_v2";
 const STATUS_KEY = "state_grid_capture_status_v2";
-const VERSION = "1.5.2";
+const VERSION = "1.5.3";
 const PROVIDER_SOURCE_KEY = "state_grid_provider_source_v1";
 const DIAGNOSTIC_KEY = "state_grid_diagnostic_v1";
 const PROVIDER_URL = "https://raw.githubusercontent.com/Yuheng0101/X/9ea8da5ce1d83572e937fa5d6882edb8382c4c30/Tasks/95598/95598.js";
@@ -101,6 +101,24 @@ function runLegacyProvider(ctx, source, env) {
     let lastNotice = "";
     let timer;
     const tracker = { count: 0, activeHost: "" };
+    let remainingTimeout = 85000;
+    const timeoutTick = 9000;
+    const scheduleWatchdog = () => {
+      const delay = Math.min(timeoutTick, remainingTimeout);
+      timer = setTimeout(() => {
+        if (settled) return;
+        remainingTimeout -= delay;
+        if (remainingTimeout <= 0) {
+          settled = true;
+          const host = tracker.activeHost || "查询引擎";
+          addDiagnostic(ctx, `查询超时：停在 ${host}`);
+          cleanup();
+          reject(new Error("查询超时，请稍后再试"));
+          return;
+        }
+        scheduleWatchdog();
+      }, delay);
+    };
     const cleanup = () => {
       globalThis.$argument = {};
       globalThis.$request = undefined;
@@ -122,15 +140,7 @@ function runLegacyProvider(ctx, source, env) {
       try { resolve(JSON.parse(response.body)); }
       catch (_) { reject(new Error("查询脚本返回的数据无法解析")); }
     };
-    timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        const host = tracker.activeHost || "查询引擎";
-        addDiagnostic(ctx, `查询超时：停在 ${host}`);
-        cleanup();
-        reject(new Error("查询超时，请稍后再试"));
-      }
-    }, 85000);
+    scheduleWatchdog();
 
     globalThis.$request = { method: "GET", url: "https://api.wsgw-rewrite.com/electricity/bill/all" };
     globalThis.Egern = globalThis.Egern || {};
@@ -161,7 +171,7 @@ function runLegacyProvider(ctx, source, env) {
       },
     };
     globalThis.$done = finish;
-    globalThis.$httpClient = legacyHttpClient(ctx, tracker);
+    globalThis.$httpClient = legacyHttpClient(ctx, tracker, () => !settled);
 
     try { (0, eval)(source); }
     catch (error) {
@@ -175,7 +185,7 @@ function runLegacyProvider(ctx, source, env) {
   });
 }
 
-function legacyHttpClient(ctx, tracker = { count: 0, activeHost: "" }) {
+function legacyHttpClient(ctx, tracker = { count: 0, activeHost: "" }, isActive = () => true) {
   const call = (method) => (input, callback) => {
     const request = typeof input === "string" ? { url: input } : { ...input };
     const timeout = Math.max(1000, Math.min(120000, Number(request.timeout || 15) * 1000));
@@ -192,9 +202,11 @@ function legacyHttpClient(ctx, tracker = { count: 0, activeHost: "" }) {
     };
     ctx.http[method](request.url, options).then(async (response) => {
       const body = await response.text();
+      if (!isActive()) return;
       addDiagnostic(ctx, `#${requestId} ${host} → HTTP ${response.status} · ${responseKind(response.headers, body)} · ${bodyLength(body)}B`);
       callback(null, { status: response.status, headers: response.headers }, body);
     }, (error) => {
+      if (!isActive()) return;
       addDiagnostic(ctx, `#${requestId} ${host} → ${safeError(error)}`);
       callback(error, null, null);
     });

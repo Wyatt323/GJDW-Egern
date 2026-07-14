@@ -1,4 +1,4 @@
-const VERSION = "1.5.2";
+const VERSION = "1.5.3";
 const DIAGNOSTIC_KEY = "state_grid_diagnostic_v1";
 const STATUS_KEY = "state_grid_capture_status_v2";
 
