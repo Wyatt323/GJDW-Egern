@@ -5,7 +5,7 @@ import vm from 'node:vm';
 function loadWidgetInternals(now = '2026-07-13T12:00:00+08:00', timerApi = {}) {
   let source = fs.readFileSync(new URL('../state-grid-widget.js', import.meta.url), 'utf8');
   source = source.replace('export default async function (ctx)', 'async function widgetMain(ctx)');
-  source += '\n;globalThis.__testExports = { widgetMain, normalizeAccount, previousMonthRecord, providerError, safeHost, runLegacyProvider, legacyHttpClient };';
+  source += '\n;globalThis.__testExports = { widgetMain, normalizeAccount, previousMonthRecord, providerError, safeHost, safeProviderPayload, runLegacyProvider, legacyHttpClient };';
 
   const FixedDate = class extends Date {
     constructor(...args) { super(...(args.length ? args : [now])); }
@@ -202,6 +202,35 @@ function testProviderErrorPreservesSafeCategoryWhenRawMessageContainsUrl() {
   assert.equal(providerError(risk), '国网限制登录频率，请明天再试');
   assert.equal(providerError(new Error('解密响应失败：https://api.120399.xyz')), '查询服务响应解析失败，请稍后重试');
   assert.equal(providerError(new Error('查询脚本返回的数据无法解析')), '查询服务响应解析失败，请稍后重试');
+}
+
+function testSafeProviderPayloadClassifiesSmallJsonErrorsWithoutLeakingBody() {
+  const { safeProviderPayload } = loadWidgetInternals();
+  assert.equal(safeProviderPayload('{"code":-100,"message":"操作过于频繁"}'), '国网限制登录频率，请明天再试');
+  assert.equal(safeProviderPayload('{"code":"RK008","message":"blockPuzzle"}'), '国网登录验证未通过，请稍后重试');
+  assert.equal(safeProviderPayload('{"code":10002,"message":"Token 为空！"}'), '国网登录状态已失效，请重新查询');
+  assert.equal(safeProviderPayload('{"code":500,"message":"解密响应失败"}'), '查询服务响应解析失败，请稍后重试');
+  assert.equal(safeProviderPayload('{"token":"secret","message":"private"}'), '');
+  assert.equal(safeProviderPayload('not json'), '');
+}
+
+async function testSmallProviderErrorResponseAddsSafeDiagnosticCategory() {
+  const { legacyHttpClient } = loadWidgetInternals();
+  const values = new Map();
+  const body = '{"code":10002,"message":"Token 为空！"}';
+  const ctx = {
+    storage: {
+      getJSON: (key) => values.get(key) || null,
+      setJSON: (key, value) => values.set(key, value),
+    },
+    http: {
+      post: async () => ({ status: 200, headers: { 'content-type': 'application/json' }, text: async () => body }),
+    },
+  };
+  await new Promise((resolve, reject) => legacyHttpClient(ctx).post('https://api.120399.xyz/private', (error) => error ? reject(error) : resolve()));
+  const serialized = JSON.stringify(values.get('state_grid_diagnostic_v1'));
+  assert.match(serialized, /登录状态已失效/);
+  assert.doesNotMatch(serialized, /Token|10002|private/);
 }
 
 async function testProviderStorageRejectsCredentialValues() {
@@ -481,6 +510,8 @@ await testStaleV1SuccessStatusDoesNotClaimV2DataWasUpdated();
 await testUpdaterPersistsAVisibleTimeoutDiagnostic();
 testDiagnosticsRedactSecretsAndUrlDetails();
 testProviderErrorPreservesSafeCategoryWhenRawMessageContainsUrl();
+testSafeProviderPayloadClassifiesSmallJsonErrorsWithoutLeakingBody();
+await testSmallProviderErrorResponseAddsSafeDiagnosticCategory();
 await testProviderStorageRejectsCredentialValues();
 await testNetworkFailurePersistsOnlySafeHostAndCategory();
 await testZeroResultReplacesStaleSuccessStatus();

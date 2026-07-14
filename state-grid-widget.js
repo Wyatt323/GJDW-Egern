@@ -210,6 +210,8 @@ function legacyHttpClient(ctx, tracker = { count: 0, activeHost: "" }, isActive 
       const body = await response.text();
       if (!isActive()) return;
       addDiagnostic(ctx, `#${requestId} ${host} → HTTP ${response.status} · ${responseKind(response.headers, body)} · ${bodyLength(body)}B`);
+      const safePayloadStatus = safeProviderPayload(body);
+      if (safePayloadStatus) addDiagnostic(ctx, `#${requestId} 结果：${safePayloadStatus}`);
       callback(null, { status: response.status, headers: response.headers }, body);
     }, (error) => {
       if (!isActive()) return;
@@ -262,6 +264,26 @@ function responseKind(headers, body) {
   if (contentType.includes("html") || /^<!doctype|^<html/i.test(sample)) return "HTML";
   if (!sample) return "空响应";
   return "其他响应";
+}
+
+function safeProviderPayload(body) {
+  const text = String(body || "").trim();
+  if (!text || text.length > 2048 || !/^[\[{]/.test(text)) return "";
+  let payload;
+  try { payload = JSON.parse(text); }
+  catch (_) { return ""; }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
+
+  const code = String(payload.code ?? payload.errorCode ?? payload.statusCode ?? payload.resultCode ?? "");
+  const message = String(payload.message ?? payload.msg ?? payload.error_description ?? payload.errorMessage ?? "");
+  const signal = `${code} ${message}`;
+
+  if (/-100\b|频繁|次日再次尝试|登录次数过多/.test(signal)) return "国网限制登录频率，请明天再试";
+  if (/RK007|RK008|RK1003|验证码|风控|blockPuzzle|clickImg|clickWord/i.test(signal)) return "国网登录验证未通过，请稍后重试";
+  if (/10002|Token\s*为空|登录态.*(?:无效|失效|过期)|WEB渠道KeyCode已失效/i.test(signal)) return "国网登录状态已失效，请重新查询";
+  if (/解密|解析|decrypt|parse/i.test(signal)) return "查询服务响应解析失败，请稍后重试";
+  if (/密码|账号|登录失败/.test(signal)) return "账号或密码未配置/不正确";
+  return "";
 }
 
 function bodyLength(body) {
