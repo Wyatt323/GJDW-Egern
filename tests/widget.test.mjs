@@ -388,6 +388,22 @@ async function renderManualWidget(family) {
   });
 }
 
+async function testWidgetsUseMinimalGlassDesignSystem() {
+  const medium = await renderManualWidget('systemMedium');
+  const small = await renderManualWidget('systemSmall');
+  const mediumText = JSON.stringify(medium);
+  const smallText = JSON.stringify(small);
+
+  assert.equal(JSON.stringify(medium.backgroundGradient.colors), JSON.stringify(['#16213A', '#0B7285', '#25A18E']));
+  assert.equal(JSON.stringify(small.backgroundGradient.colors), JSON.stringify(['#16213A', '#0B7285', '#25A18E']));
+  assert.match(mediumText, /#FFFFFF1A/);
+  assert.match(mediumText, /#FFFFFF2E/);
+  assert.match(mediumText, /账户正常/);
+  assert.match(smallText, /本月用电/);
+  assert.match(smallText, /上月账单/);
+  assert.doesNotMatch(mediumText, /#00796B|#00A88F/);
+}
+
 async function testMediumWidgetRendersAllRequestedMetrics() {
   const result = await renderManualWidget('systemMedium');
   const serialized = JSON.stringify(result);
@@ -423,6 +439,7 @@ await testSuccessfulResponseRecordsOnlyTypeAndSize();
 await testTimeoutWatchdogUsesShortTicksForEgern();
 await testLateHttpResponseAfterTimeoutDoesNotAppendDiagnostics();
 testReleaseVersionIsConsistent();
+await testWidgetsUseMinimalGlassDesignSystem();
 await testMediumWidgetRendersAllRequestedMetrics();
 await testLockScreenWidgetsIncludePreviousBill();
 console.log('widget tests passed');

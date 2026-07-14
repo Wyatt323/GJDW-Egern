@@ -1,14 +1,20 @@
 const STORAGE_KEY = "state_grid_widget_v2";
 const STATUS_KEY = "state_grid_capture_status_v2";
-const VERSION = "1.5.3";
+const VERSION = "1.6.0";
 const PROVIDER_SOURCE_KEY = "state_grid_provider_source_v1";
 const DIAGNOSTIC_KEY = "state_grid_diagnostic_v1";
 const PROVIDER_URL = "https://raw.githubusercontent.com/Yuheng0101/X/9ea8da5ce1d83572e937fa5d6882edb8382c4c30/Tasks/95598/95598.js";
-const GREEN = "#00A88F";
-const GREEN_DARK = "#00796B";
+const INK = "#16213A";
+const TEAL = "#0B7285";
+const MINT = "#25A18E";
 const WHITE = "#FFFFFF";
 const MUTED = "#FFFFFFB8";
-const CARD = "#FFFFFF1F";
+const GLASS = "#FFFFFF1A";
+const GLASS_STRONG = "#FFFFFF2E";
+const GLASS_LINE = "#FFFFFF26";
+const SUCCESS = "#BFFFE7";
+const DANGER = "#FFD4D1";
+const BACKGROUND = { type: "linear", colors: [INK, TEAL, MINT], startPoint: { x: 0, y: 0 }, endPoint: { x: 1, y: 1 } };
 
 export default async function (ctx) {
   try {
@@ -381,83 +387,109 @@ function mediumWidget(a, env, expanded) {
     header(a),
     { type: "spacer" },
     {
-      type: "stack", direction: "row", gap: 10, children: [
-        metric("电费余额", money(a.balance), "sf-symbol:yensign.circle.fill", a.overdue ? "#FFCCCB" : WHITE),
+      type: "stack", direction: "row", gap: 8, children: [
+        metric("电费余额", money(a.balance), "sf-symbol:yensign", a.overdue ? DANGER : WHITE),
         metric("本月用电", kwh(a.monthKwh), "sf-symbol:bolt.fill", WHITE),
-        metric("上月账单", money(a.previousMonthFee), "sf-symbol:creditcard.fill", WHITE),
+        metric("上月账单", money(a.previousMonthFee), "sf-symbol:doc.text.fill", WHITE),
       ],
     },
     { type: "spacer" },
-    {
-      type: "stack", direction: "row", alignItems: "center", gap: 7, children: [
-        { type: "image", src: "sf-symbol:clock.arrow.circlepath", width: 12, height: 12, color: MUTED },
-        { type: "text", text: updateLabel(a.updatedAt), font: { size: "caption2" }, textColor: MUTED, maxLines: 1 },
-        { type: "spacer" },
-        { type: "text", text: a.overdue ? "存在欠费" : "账户正常", font: { size: "caption2", weight: "semibold" }, textColor: a.overdue ? "#FFD5D2" : "#C8FFF2" },
-      ],
-    },
+    footer(a),
   ];
   if (expanded) children.splice(3, 0, recentDays(a.days));
   return {
     type: "widget", url: openURL, padding: 16, gap: 5, children,
-    backgroundGradient: { type: "linear", colors: [GREEN, GREEN_DARK], startPoint: { x: 0, y: 0 }, endPoint: { x: 1, y: 1 } },
+    backgroundGradient: BACKGROUND,
     refreshAfter: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
   };
 }
 
 function smallWidget(a, env) {
   return {
-    type: "widget", url: env.OPEN_URL || "https://www.95598.cn/osgweb/index", padding: 15, gap: 7,
-    backgroundGradient: { type: "linear", colors: [GREEN, GREEN_DARK], startPoint: { x: 0, y: 0 }, endPoint: { x: 1, y: 1 } },
+    type: "widget", url: env.OPEN_URL || "https://www.95598.cn/osgweb/index", padding: 14, gap: 6,
+    backgroundGradient: BACKGROUND,
     refreshAfter: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
     children: [
       { type: "stack", direction: "row", alignItems: "center", gap: 7, children: [
-        { type: "image", src: "sf-symbol:bolt.house.fill", width: 20, height: 20, color: WHITE },
-        { type: "text", text: "国家电网", font: { size: "headline", weight: "bold" }, textColor: WHITE, maxLines: 1, minScale: 0.75 },
+        symbolBadge("sf-symbol:bolt.fill", 14),
+        { type: "text", text: a.name || "国家电网", font: { size: "subheadline", weight: "semibold" }, textColor: WHITE, maxLines: 1, minScale: 0.72 },
+        { type: "spacer" },
+        statusDot(a.overdue),
       ] },
       { type: "spacer" },
-      { type: "text", text: a.overdue ? "当前欠费" : "账户余额", font: { size: "caption1" }, textColor: MUTED },
+      { type: "text", text: a.overdue ? "待缴电费" : "账户余额", font: { size: "caption2", weight: "medium" }, textColor: MUTED },
       { type: "text", text: money(a.balance), font: { size: "title", weight: "bold" }, textColor: WHITE, maxLines: 1, minScale: 0.55 },
       { type: "spacer" },
-      { type: "text", text: `本月 ${kwh(a.monthKwh)}`, font: { size: "caption1", weight: "medium" }, textColor: WHITE, maxLines: 1, minScale: 0.7 },
-      { type: "text", text: `上月账单 ${money(a.previousMonthFee)}`, font: { size: "caption2" }, textColor: MUTED, maxLines: 1, minScale: 0.7 },
+      { type: "stack", direction: "column", gap: 4, padding: [7, 9], borderRadius: 11, backgroundColor: GLASS, children: [
+        compactRow("本月用电", kwh(a.monthKwh)),
+        { type: "stack", height: 1, backgroundColor: GLASS_LINE },
+        compactRow("上月账单", money(a.previousMonthFee)),
+      ] },
     ],
   };
 }
 
 function header(a) {
-  return { type: "stack", direction: "row", alignItems: "center", gap: 8, children: [
-    { type: "image", src: "sf-symbol:bolt.house.fill", width: 22, height: 22, color: WHITE },
+  return { type: "stack", direction: "row", alignItems: "center", gap: 9, children: [
+    symbolBadge("sf-symbol:bolt.fill", 15),
     { type: "stack", direction: "column", alignItems: "start", gap: 1, children: [
-      { type: "text", text: a.name || "国家电网", font: { size: "headline", weight: "bold" }, textColor: WHITE, maxLines: 1 },
-      { type: "text", text: mask(a.accountNumber), font: { size: "caption2" }, textColor: MUTED, maxLines: 1 },
+      { type: "text", text: a.name || "国家电网", font: { size: "headline", weight: "semibold" }, textColor: WHITE, maxLines: 1 },
+      { type: "text", text: mask(a.accountNumber), font: { size: "caption2", weight: "medium" }, textColor: MUTED, maxLines: 1 },
     ] },
     { type: "spacer" },
-    { type: "stack", padding: [4, 7], borderRadius: 9, backgroundColor: CARD, children: [
-      { type: "text", text: "网上国网", font: { size: "caption2", weight: "semibold" }, textColor: WHITE },
+    { type: "stack", direction: "row", alignItems: "center", gap: 5, padding: [4, 8], borderRadius: 10, backgroundColor: GLASS, children: [
+      statusDot(a.overdue),
+      { type: "text", text: a.overdue ? "待缴费" : "正常", font: { size: "caption2", weight: "semibold" }, textColor: a.overdue ? DANGER : SUCCESS },
     ] },
   ] };
 }
 
 function metric(title, value, icon, color) {
-  return { type: "stack", direction: "column", alignItems: "start", flex: 1, gap: 5, padding: 10, borderRadius: 13, backgroundColor: CARD, children: [
-    { type: "stack", direction: "row", gap: 5, children: [
-      { type: "image", src: icon, width: 13, height: 13, color },
-      { type: "text", text: title, font: { size: "caption2" }, textColor: MUTED, maxLines: 1 },
+  return { type: "stack", direction: "column", alignItems: "start", flex: 1, gap: 7, padding: [10, 9], borderRadius: 14, backgroundColor: GLASS, children: [
+    { type: "stack", direction: "row", alignItems: "center", gap: 5, children: [
+      { type: "image", src: icon, width: 11, height: 11, color: MUTED },
+      { type: "text", text: title, font: { size: "caption2", weight: "medium" }, textColor: MUTED, maxLines: 1, minScale: 0.72 },
     ] },
-    { type: "text", text: value, font: { size: "subheadline", weight: "bold" }, textColor: color, maxLines: 1, minScale: 0.52 },
+    { type: "text", text: value, font: { size: "subheadline", weight: "semibold" }, textColor: color, maxLines: 1, minScale: 0.5 },
   ] };
+}
+
+function footer(a) {
+  return { type: "stack", direction: "row", alignItems: "center", gap: 6, children: [
+    { type: "image", src: "sf-symbol:clock", width: 10, height: 10, color: MUTED },
+    { type: "text", text: updateLabel(a.updatedAt), font: { size: "caption2" }, textColor: MUTED, maxLines: 1 },
+    { type: "spacer" },
+    { type: "text", text: a.overdue ? "存在欠费" : "账户正常", font: { size: "caption2", weight: "medium" }, textColor: a.overdue ? DANGER : SUCCESS },
+  ] };
+}
+
+function compactRow(label, value) {
+  return { type: "stack", direction: "row", alignItems: "center", children: [
+    { type: "text", text: label, font: { size: "caption2", weight: "medium" }, textColor: MUTED, maxLines: 1 },
+    { type: "spacer" },
+    { type: "text", text: value, font: { size: "caption2", weight: "semibold" }, textColor: WHITE, maxLines: 1, minScale: 0.62 },
+  ] };
+}
+
+function symbolBadge(icon, size) {
+  return { type: "stack", width: 30, height: 30, alignItems: "center", justifyContent: "center", borderRadius: 10, backgroundColor: GLASS_STRONG, children: [
+    { type: "image", src: icon, width: size, height: size, color: WHITE },
+  ] };
+}
+
+function statusDot(overdue) {
+  return { type: "stack", width: 6, height: 6, borderRadius: 3, backgroundColor: overdue ? DANGER : SUCCESS };
 }
 
 function recentDays(days) {
   const recent = (days || []).slice(-7);
   const max = Math.max(1, ...recent.map((x) => x.kwh || 0));
-  return { type: "stack", direction: "column", gap: 6, padding: 10, borderRadius: 13, backgroundColor: CARD, children: [
+  return { type: "stack", direction: "column", gap: 6, padding: 10, borderRadius: 14, backgroundColor: GLASS, children: [
     { type: "text", text: "近 7 日用电", font: { size: "caption1", weight: "semibold" }, textColor: WHITE },
     { type: "stack", direction: "row", alignItems: "end", gap: 5, children: recent.map((x) => ({
       type: "stack", direction: "column", alignItems: "center", flex: 1, gap: 3, children: [
-        { type: "text", text: format(x.kwh, 1), font: { size: "caption2" }, textColor: MUTED, minScale: 0.5 },
-        { type: "stack", width: 10, height: Math.max(4, Math.round(34 * x.kwh / max)), borderRadius: 5, backgroundColor: "#C8FFF2" },
+        { type: "text", text: format(x.kwh, 1), font: { size: "caption2", weight: "medium" }, textColor: MUTED, minScale: 0.5 },
+        { type: "stack", width: 8, height: Math.max(4, Math.round(34 * x.kwh / max)), borderRadius: 4, backgroundColor: SUCCESS },
       ],
     })) },
   ] };
@@ -470,8 +502,8 @@ function emptyWidget(family, captureStatus, env, updateMode) {
     : (!updateMode && !captureStatus)
       ? (compact ? "请先更新数据" : "请在小组件画廊中运行“国家电网·更新数据”")
       : captureStatusMessage(captureStatus, compact);
-  return { type: "widget", padding: compact ? 5 : 16, gap: 7, backgroundColor: GREEN_DARK, children: [
-    { type: "image", src: "sf-symbol:bolt.house.fill", width: compact ? 16 : 28, height: compact ? 16 : 28, color: WHITE },
+  return { type: "widget", padding: compact ? 5 : 16, gap: 7, backgroundGradient: BACKGROUND, children: [
+    compact ? { type: "image", src: "sf-symbol:bolt.fill", width: 16, height: 16, color: WHITE } : symbolBadge("sf-symbol:bolt.fill", 15),
     { type: "text", text: `国家电网 · v${VERSION}`, font: { size: compact ? "caption1" : "headline", weight: "bold" }, textColor: WHITE },
     { type: "text", text: message, font: { size: "caption1" }, textColor: MUTED, maxLines: compact ? 1 : 3 },
   ] };
