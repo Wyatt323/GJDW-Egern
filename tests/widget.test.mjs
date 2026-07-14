@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-function loadWidgetInternals(now = '2026-07-13T12:00:00+08:00') {
+function loadWidgetInternals(now = '2026-07-13T12:00:00+08:00', timerApi = {}) {
   let source = fs.readFileSync(new URL('../state-grid-widget.js', import.meta.url), 'utf8');
   source = source.replace('export default async function (ctx)', 'async function widgetMain(ctx)');
-  source += '\n;globalThis.__testExports = { widgetMain, normalizeAccount, previousMonthRecord };';
+  source += '\n;globalThis.__testExports = { widgetMain, normalizeAccount, previousMonthRecord, providerError, safeHost, runLegacyProvider, legacyHttpClient };';
 
   const FixedDate = class extends Date {
     constructor(...args) { super(...(args.length ? args : [now])); }
@@ -14,8 +14,8 @@ function loadWidgetInternals(now = '2026-07-13T12:00:00+08:00') {
   const sandbox = {
     console,
     Date: FixedDate,
-    setTimeout,
-    clearTimeout,
+    setTimeout: timerApi.setTimeout || setTimeout,
+    clearTimeout: timerApi.clearTimeout || clearTimeout,
     globalThis: null,
   };
   sandbox.globalThis = sandbox;
@@ -180,7 +180,144 @@ async function testUpdaterPersistsAVisibleTimeoutDiagnostic() {
   assert.ok(trace, 'updater should persist a diagnostic trace');
   assert.match(JSON.stringify(trace), /开始查询|查询引擎/);
   assert.doesNotMatch(JSON.stringify(trace), /secret|tester/);
-  assert.match(JSON.stringify(result), /尚未完成首次查询|等待账户数据|运行.*更新数据/);
+  assert.match(JSON.stringify(result), /查询完成，但没有返回户号数据|尚未完成首次查询|等待账户数据/);
+}
+
+function testDiagnosticsRedactSecretsAndUrlDetails() {
+  const { providerError, safeHost } = loadWidgetInternals();
+  const username = '13800138000';
+  const password = 'P@ssword-123';
+  const message = providerError(
+    new Error(`Bearer abc.def token=secret ${username} ${password} https://user:pass@example.com/private?token=hidden`),
+    { SGCC_USERNAME: username, SGCC_PASSWORD: password },
+  );
+  assert.equal(message, '查询服务返回异常，请查看诊断步骤');
+  assert.equal(safeHost('https://user:pass@example.com/private?token=hidden'), '其他查询服务');
+  assert.equal(safeHost('https://user:pass@api.120399.xyz/private?token=hidden'), 'api.120399.xyz');
+}
+
+async function testProviderStorageRejectsCredentialValues() {
+  const { runLegacyProvider } = loadWidgetInternals();
+  const values = new Map();
+  const username = '13800138000';
+  const password = 'P@ssword-123';
+  const ctx = {
+    storage: {
+      getJSON: (key) => values.get(key) || null,
+      setJSON: (key, value) => values.set(key, value),
+      get: (key) => values.get(key) || null,
+      set: (key, value) => values.set(key, value),
+      delete: (key) => values.delete(key),
+    },
+    http: {},
+  };
+  const source = `$persistentStore.write($argument.username, 'leaked_user');
+    $persistentStore.write($argument.password, 'leaked_password');
+    $notification.post('错误', '', 'Bearer hidden-token https://example.com/private?token=x');
+    $done({});`;
+  await assert.rejects(() => runLegacyProvider(ctx, source, { SGCC_USERNAME: username, SGCC_PASSWORD: password }), /查询服务返回异常/);
+  const serialized = JSON.stringify([...values.entries()]);
+  assert.doesNotMatch(serialized, new RegExp(username));
+  assert.doesNotMatch(serialized, /P@ssword-123|hidden-token|private|token=x/);
+}
+
+async function testNetworkFailurePersistsOnlySafeHostAndCategory() {
+  const { legacyHttpClient } = loadWidgetInternals();
+  const values = new Map();
+  const ctx = {
+    storage: {
+      getJSON: (key) => values.get(key) || null,
+      setJSON: (key, value) => values.set(key, value),
+    },
+    http: { get: async () => { throw new Error('Bearer hidden https://example.com/private?token=x'); } },
+  };
+  await new Promise((resolve) => {
+    legacyHttpClient(ctx).get('https://user:pass@api.120399.xyz/private?token=x', () => resolve());
+  });
+  const serialized = JSON.stringify(values.get('state_grid_diagnostic_v1'));
+  assert.match(serialized, /api\.120399\.xyz/);
+  assert.doesNotMatch(serialized, /user:pass|private|token=x|Bearer hidden/);
+}
+
+async function testZeroResultReplacesStaleSuccessStatus() {
+  const { widgetMain } = loadWidgetInternals();
+  const values = new Map([
+    ['state_grid_capture_status_v2', { kind: 'success', message: '旧查询成功' }],
+    ['state_grid_provider_source_v1', '$done({response:{body:"[]"}});/*' + 'x'.repeat(50001) + '*/'],
+  ]);
+  await widgetMain({
+    widgetFamily: 'systemMedium',
+    env: { RUN_MODE: 'update', SGCC_USERNAME: 'tester', SGCC_PASSWORD: 'secret' },
+    storage: {
+      getJSON: (key) => values.get(key) || null,
+      setJSON: (key, value) => values.set(key, value),
+      get: (key) => values.get(key) || null,
+      set: (key, value) => values.set(key, value),
+      delete: (key) => values.delete(key),
+    },
+  });
+  assert.equal(values.get('state_grid_capture_status_v2').kind, 'empty');
+  assert.doesNotMatch(JSON.stringify(values.get('state_grid_capture_status_v2')), /旧查询成功/);
+}
+
+async function testTimeoutPersistsActiveSafeHost() {
+  const { runLegacyProvider } = loadWidgetInternals(
+    '2026-07-13T12:00:00+08:00',
+    { setTimeout: (fn) => setTimeout(fn, 0), clearTimeout },
+  );
+  const values = new Map();
+  const ctx = {
+    storage: {
+      getJSON: (key) => values.get(key) || null,
+      setJSON: (key, value) => values.set(key, value),
+      get: (key) => values.get(key) || null,
+      set: (key, value) => values.set(key, value),
+      delete: (key) => values.delete(key),
+    },
+    http: { get: () => new Promise(() => {}) },
+  };
+  const source = `$httpClient.get('https://user:pass@api.120399.xyz/private?token=x', function () {});`;
+  await assert.rejects(
+    () => runLegacyProvider(ctx, source, { SGCC_USERNAME: 'tester', SGCC_PASSWORD: 'secret' }),
+    /查询超时/,
+  );
+  const serialized = JSON.stringify(values.get('state_grid_diagnostic_v1'));
+  assert.match(serialized, /查询超时：停在 api\.120399\.xyz/);
+  assert.doesNotMatch(serialized, /user:pass|private|token=x|tester|secret/);
+}
+
+async function testSuccessfulResponseRecordsOnlyTypeAndSize() {
+  const { legacyHttpClient } = loadWidgetInternals();
+  const values = new Map();
+  const ctx = {
+    storage: {
+      getJSON: (key) => values.get(key) || null,
+      setJSON: (key, value) => values.set(key, value),
+    },
+    http: {
+      post: async () => ({
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        text: async () => '{"private":"must-not-appear"}',
+      }),
+    },
+  };
+  await new Promise((resolve, reject) => {
+    legacyHttpClient(ctx).post('https://api.120399.xyz/secret-path', (error) => error ? reject(error) : resolve());
+  });
+  const serialized = JSON.stringify(values.get('state_grid_diagnostic_v1'));
+  assert.match(serialized, /#1 api\.120399\.xyz → HTTP 200 · JSON · 29B/);
+  assert.doesNotMatch(serialized, /secret-path|must-not-appear|private/);
+}
+
+function testReleaseVersionIsConsistent() {
+  const packageJson = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const version = packageJson.version;
+  for (const file of ['state-grid-widget.js', 'state-grid-health.js', 'state-grid.yaml', 'README.md']) {
+    const text = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+    assert.match(text, new RegExp(version.replace(/\./g, '\\.'), 'g'), `${file} should reference ${version}`);
+    assert.doesNotMatch(text, /v=1\.5\.0|v1\.5\.0/, `${file} should not contain stale v1.5.0 references`);
+  }
 }
 
 async function renderManualWidget(family) {
@@ -230,6 +367,13 @@ testFlatProviderPayloadIsNormalized();
 testLegacyMonthFeeIsNotRelabeledAsPreviousBill();
 await testStaleV1SuccessStatusDoesNotClaimV2DataWasUpdated();
 await testUpdaterPersistsAVisibleTimeoutDiagnostic();
+testDiagnosticsRedactSecretsAndUrlDetails();
+await testProviderStorageRejectsCredentialValues();
+await testNetworkFailurePersistsOnlySafeHostAndCategory();
+await testZeroResultReplacesStaleSuccessStatus();
+await testTimeoutPersistsActiveSafeHost();
+await testSuccessfulResponseRecordsOnlyTypeAndSize();
+testReleaseVersionIsConsistent();
 await testMediumWidgetRendersAllRequestedMetrics();
 await testLockScreenWidgetsIncludePreviousBill();
 console.log('widget tests passed');

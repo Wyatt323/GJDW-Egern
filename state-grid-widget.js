@@ -1,6 +1,6 @@
 const STORAGE_KEY = "state_grid_widget_v2";
 const STATUS_KEY = "state_grid_capture_status_v2";
-const VERSION = "1.5.1";
+const VERSION = "1.5.2";
 const PROVIDER_SOURCE_KEY = "state_grid_provider_source_v1";
 const DIAGNOSTIC_KEY = "state_grid_diagnostic_v1";
 const PROVIDER_URL = "https://raw.githubusercontent.com/Yuheng0101/X/9ea8da5ce1d83572e937fa5d6882edb8382c4c30/Tasks/95598/95598.js";
@@ -13,8 +13,8 @@ const CARD = "#FFFFFF1F";
 export default async function (ctx) {
   try {
     return await renderWidget(ctx);
-  } catch (error) {
-    return fatalWidget(ctx?.widgetFamily, error);
+  } catch (_) {
+    return fatalWidget(ctx?.widgetFamily);
   }
 }
 
@@ -28,22 +28,24 @@ async function renderWidget(ctx) {
 
   if (updateMode && env.SGCC_USERNAME && env.SGCC_PASSWORD) {
     resetDiagnostic(ctx);
+    setUpdateStatus(ctx, "pending", "正在登录并查询网上国网");
     addDiagnostic(ctx, "开始查询");
     try {
       const remote = normalizePayload(await fetchOfficialData(ctx, env));
       if (remote.length) {
         accounts = mergeAccounts(accounts, remote);
         ctx.storage.setJSON(STORAGE_KEY, { accounts, updatedAt: new Date().toISOString(), source: "网上国网网页接口" });
-        ctx.storage.setJSON(STATUS_KEY, { kind: "success", hitAt: new Date().toISOString(), message: `已主动查询 ${remote.length} 个户号` });
+        setUpdateStatus(ctx, "success", `已主动查询 ${remote.length} 个户号`);
         addDiagnostic(ctx, `查询成功：${remote.length} 个户号`);
       } else {
+        setUpdateStatus(ctx, "empty", "查询完成，但没有返回户号数据");
         addDiagnostic(ctx, "查询结束，但没有返回户号数据");
       }
     } catch (error) {
-      const message = providerError(error);
-      ctx.storage.setJSON(STATUS_KEY, { kind: "error", hitAt: new Date().toISOString(), message });
+      const message = providerError(error, env);
+      setUpdateStatus(ctx, "error", message);
       addDiagnostic(ctx, `查询失败：${message}`);
-      console.log(`[国家电网] 主动查询失败: ${String(error)}`);
+      console.log(`[国家电网] ${message}`);
     }
   }
 
@@ -56,8 +58,8 @@ async function renderWidget(ctx) {
         accounts = mergeAccounts(accounts, remote);
         ctx.storage.setJSON(STORAGE_KEY, { accounts, updatedAt: new Date().toISOString() });
       }
-    } catch (error) {
-      console.log(`[国家电网] DATA_URL 获取失败: ${String(error)}`);
+    } catch (_) {
+      console.log("[国家电网] 兼容数据接口获取失败");
     }
   }
 
@@ -98,10 +100,20 @@ function runLegacyProvider(ctx, source, env) {
     let settled = false;
     let lastNotice = "";
     let timer;
+    const tracker = { count: 0, activeHost: "" };
+    const cleanup = () => {
+      globalThis.$argument = {};
+      globalThis.$request = undefined;
+      globalThis.$persistentStore = undefined;
+      globalThis.$notification = undefined;
+      globalThis.$done = undefined;
+      globalThis.$httpClient = undefined;
+    };
     const finish = (result) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      cleanup();
       const response = result?.response || result;
       if (!response?.body) {
         reject(new Error(lastNotice || "查询脚本没有返回数据"));
@@ -113,6 +125,9 @@ function runLegacyProvider(ctx, source, env) {
     timer = setTimeout(() => {
       if (!settled) {
         settled = true;
+        const host = tracker.activeHost || "查询引擎";
+        addDiagnostic(ctx, `查询超时：停在 ${host}`);
+        cleanup();
         reject(new Error("查询超时，请稍后再试"));
       }
     }, 85000);
@@ -130,38 +145,44 @@ function runLegacyProvider(ctx, source, env) {
       read: (key) => ctx.storage.get(`provider:${key}`),
       write: (value, key) => {
         try {
+          const stringValue = value == null ? "" : String(value);
+          if (containsCredential(stringValue, env)) return false;
           if (value == null) ctx.storage.delete(`provider:${key}`);
-          else ctx.storage.set(`provider:${key}`, String(value));
+          else ctx.storage.set(`provider:${key}`, stringValue);
           return true;
         } catch (_) { return false; }
       },
     };
     globalThis.$notification = {
       post: (title, subtitle, body) => {
-        lastNotice = [title, subtitle, body].filter(Boolean).join("：");
+        const rawNotice = [title, subtitle, body].filter(Boolean).join("：");
+        lastNotice = providerError(new Error(rawNotice), env);
         console.log(`[国家电网] ${lastNotice}`);
       },
     };
     globalThis.$done = finish;
-    globalThis.$httpClient = legacyHttpClient(ctx);
+    globalThis.$httpClient = legacyHttpClient(ctx, tracker);
 
     try { (0, eval)(source); }
     catch (error) {
       if (!settled) {
         settled = true;
         clearTimeout(timer);
-        reject(error);
+        cleanup();
+        reject(new Error(providerError(error, env)));
       }
     }
   });
 }
 
-function legacyHttpClient(ctx) {
+function legacyHttpClient(ctx, tracker = { count: 0, activeHost: "" }) {
   const call = (method) => (input, callback) => {
     const request = typeof input === "string" ? { url: input } : { ...input };
     const timeout = Math.max(1000, Math.min(120000, Number(request.timeout || 15) * 1000));
     const host = safeHost(request.url);
-    addDiagnostic(ctx, `请求 ${host}`);
+    const requestId = ++tracker.count;
+    tracker.activeHost = host;
+    addDiagnostic(ctx, `#${requestId} 请求 ${host}`);
     const options = {
       headers: request.headers || {},
       body: request.body,
@@ -171,10 +192,10 @@ function legacyHttpClient(ctx) {
     };
     ctx.http[method](request.url, options).then(async (response) => {
       const body = await response.text();
-      addDiagnostic(ctx, `${host} → HTTP ${response.status}`);
+      addDiagnostic(ctx, `#${requestId} ${host} → HTTP ${response.status} · ${responseKind(response.headers, body)} · ${bodyLength(body)}B`);
       callback(null, { status: response.status, headers: response.headers }, body);
-    }).catch((error) => {
-      addDiagnostic(ctx, `${host} → ${safeError(error)}`);
+    }, (error) => {
+      addDiagnostic(ctx, `#${requestId} ${host} → ${safeError(error)}`);
       callback(error, null, null);
     });
   };
@@ -182,6 +203,11 @@ function legacyHttpClient(ctx) {
     get: call("get"), post: call("post"), put: call("put"), delete: call("delete"),
     patch: call("patch"), head: call("head"), options: call("options"),
   };
+}
+
+function setUpdateStatus(ctx, kind, message) {
+  try { ctx.storage.setJSON(STATUS_KEY, { kind, hitAt: new Date().toISOString(), message }); }
+  catch (_) { /* status storage is best effort */ }
 }
 
 function resetDiagnostic(ctx) {
@@ -199,22 +225,58 @@ function addDiagnostic(ctx, message) {
 }
 
 function safeHost(url) {
-  const match = String(url || "").match(/^https?:\/\/([^/]+)/i);
-  return match ? match[1] : "未知接口";
+  const match = String(url || "").match(/^https?:\/\/([^/?#]+)/i);
+  if (!match) return "其他查询服务";
+  const authority = match[1].slice(match[1].lastIndexOf("@") + 1);
+  const hostname = (authority.startsWith("[")
+    ? authority.slice(1, authority.indexOf("]"))
+    : authority.split(":")[0]).toLowerCase();
+  if (hostname === "api.120399.xyz" || hostname === "www.95598.cn") return hostname;
+  return "其他查询服务";
+}
+
+function responseKind(headers, body) {
+  let contentType = "";
+  try { contentType = String(headers?.get?.("content-type") || headers?.["content-type"] || headers?.["Content-Type"] || "").toLowerCase(); }
+  catch (_) { contentType = ""; }
+  const sample = String(body || "").trim();
+  if (contentType.includes("json") || /^[\[{]/.test(sample)) return "JSON";
+  if (contentType.includes("html") || /^<!doctype|^<html/i.test(sample)) return "HTML";
+  if (!sample) return "空响应";
+  return "其他响应";
+}
+
+function bodyLength(body) {
+  return Math.min(999999, String(body || "").length);
 }
 
 function safeError(error) {
-  return String(error?.message || error || "请求失败")
-    .replace(/https?:\/\/[^\s]+/g, "[URL]")
-    .slice(0, 100);
+  const message = String(error?.message || error || "");
+  if (/timeout|timed out|超时/i.test(message)) return "请求超时";
+  return "网络请求失败";
 }
 
-function providerError(error) {
-  const message = String(error?.message || error || "未知错误");
+function containsCredential(value, env) {
+  const text = String(value || "");
+  return [env?.SGCC_USERNAME, env?.SGCC_PASSWORD]
+    .map((item) => String(item || ""))
+    .filter((item) => item.length >= 4)
+    .some((item) => text.includes(item));
+}
+
+function providerError(error, env = {}) {
+  const message = String(error?.message || error || "");
+  if (containsCredential(message, env) || /bearer\s+|(?:token|password|passwd|authorization)\s*[:=]|https?:\/\//i.test(message)) {
+    return "查询服务返回异常，请查看诊断步骤";
+  }
   if (/密码|账号/.test(message)) return "账号或密码未配置/不正确";
   if (/频繁|-100/.test(message)) return "国网限制登录频率，请明天再试";
   if (/验证码|风控/.test(message)) return "国网登录验证未通过，请稍后重试";
-  return message.slice(0, 90);
+  if (/查询引擎.*(?:下载|内容)/.test(message)) return "查询引擎下载失败，请检查网络";
+  if (/timeout|timed out|超时/i.test(message)) return "查询服务超时，请稍后重试";
+  if (/network|网络|连接|fetch|socket/i.test(message)) return "查询服务网络异常，请稍后重试";
+  if (/没有返回数据/.test(message)) return "查询服务没有返回数据";
+  return "查询服务返回异常，请查看诊断步骤";
 }
 
 function normalizePayload(payload) {
@@ -403,16 +465,13 @@ function emptyWidget(family, captureStatus, env, updateMode) {
   ] };
 }
 
-function fatalWidget(family, error) {
+function fatalWidget(family) {
   const compact = String(family || "").startsWith("accessory");
   return {
-    type: "widget",
-    padding: compact ? 5 : 14,
-    gap: 6,
-    backgroundColor: "#8B1E1E",
+    type: "widget", padding: compact ? 5 : 14, gap: 6, backgroundColor: "#8B1E1E",
     children: [
       { type: "text", text: `国家电网 · v${VERSION}`, font: { size: "headline", weight: "bold" }, textColor: WHITE, maxLines: 1 },
-      { type: "text", text: compact ? "运行错误" : `运行错误：${String(error?.message || error).slice(0, 160)}`, font: { size: "caption1" }, textColor: WHITE, maxLines: compact ? 1 : 4 },
+      { type: "text", text: compact ? "运行错误" : "运行错误，请打开国家电网·诊断查看安全诊断信息", font: { size: "caption1" }, textColor: WHITE, maxLines: compact ? 1 : 4 },
     ],
   };
 }

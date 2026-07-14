@@ -4,24 +4,24 @@
 
 ## 一键在线导入
 
-[![一键导入 Egern](https://img.shields.io/badge/Egern-一键导入-00A88F?style=for-the-badge&logo=apple)](https://egernapp.com/modules/new?name=%E5%9B%BD%E5%AE%B6%E7%94%B5%E7%BD%91%E5%B0%8F%E7%BB%84%E4%BB%B6&url=https%3A%2F%2Fraw.githubusercontent.com%2FWyatt323%2FGJDW-Egern%2Frefs%2Fheads%2Fmain%2Fstate-grid.yaml%3Fv%3D1.5.0)
+[![一键导入 Egern](https://img.shields.io/badge/Egern-一键导入-00A88F?style=for-the-badge&logo=apple)](https://egernapp.com/modules/new?name=%E5%9B%BD%E5%AE%B6%E7%94%B5%E7%BD%91%E5%B0%8F%E7%BB%84%E4%BB%B6&url=https%3A%2F%2Fraw.githubusercontent.com%2FWyatt323%2FGJDW-Egern%2Frefs%2Fheads%2Fmain%2Fstate-grid.yaml%3Fv%3D1.5.2)
 
 也可以在 Egern“工具 → 模块 → +”中添加：
 
 ```text
-https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid.yaml?v=1.5.0
+https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid.yaml?v=1.5.2
 ```
 
-## v1.5.0 的重要变化
+## v1.5.2 的重要变化
 
 国网与南网的实现不同。当前公开维护的国网查询脚本使用 `www.95598.cn` 网页接口，并以 `api.wsgw-rewrite.com` 作为代理软件中的虚拟触发地址；它不是通过监听官方 App 的业务请求取数。
 
-新版已删除旧版 `*.95598.cn` App 响应抓取、MitM 和 HTTP Capture 配置，改为主动登录查询。v1.5.1 会按自然月准确选择上月账单，并兼容国网查询引擎的跨年及扁平返回结构，不再把“最新月度记录”或旧版 `monthFee` 错标为上月账单。为避免沿用旧语义缓存，本版使用新的 v2 数据缓存，升级后需重新运行一次“国家电网·更新数据”。耗时查询与主组件渲染保持分离，避免查询期间只显示白色占位卡片；诊断组件会直接显示最近查询经过的服务和失败位置，不再依赖 Egern 控制台日志。
+新版已删除旧版 `*.95598.cn` App 响应抓取、MitM 和 HTTP Capture 配置，改为主动登录查询。v1.5.2 会按自然月准确选择上月账单，并兼容国网查询引擎的跨年及扁平返回结构，不再把“最新月度记录”或旧版 `monthFee` 错标为上月账单。为避免沿用旧语义缓存，本版使用新的 v2 数据缓存，升级后需重新运行一次“国家电网·更新数据”。耗时查询与主组件渲染保持分离，避免查询期间只显示白色占位卡片；诊断组件会直接显示最近查询经过的服务和失败位置，不再依赖 Egern 控制台日志。
 
 ## 完整设置
 
 1. 在 Egern 中删除旧的“国家电网小组件”模块。
-2. 使用上方带 `v=1.5.0` 的链接重新导入并启用模块。
+2. 使用上方带 `v=1.5.2` 的链接重新导入并启用模块。
 3. 打开“工具 → 模块 → 国家电网小组件 → 环境变量”。
 4. 填写 `SGCC_USERNAME`：网上国网登录账号，通常是手机号。
 5. 填写 `SGCC_PASSWORD`：网上国网登录密码。
@@ -41,7 +41,7 @@ https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid
 - “查询引擎下载失败”：检查 Egern 是否能访问 `raw.githubusercontent.com`。
 - 主组件显示“请先更新数据”：在小组件画廊运行一次“国家电网·更新数据”。
 - “更新数据”长时间停在白色卡片：等待最多 100 秒；若仍无结果，重新进入画廊后再运行一次并查看提示。
-- 组件完全空白：先预览“国家电网·诊断”，确认应显示 `v1.5.0`。
+- 组件完全空白：先预览“国家电网·诊断”，确认应显示 `v1.5.2`。
 
 成功登录后会缓存登录态，后续刷新通常不会重复完整登录。请避免短时间内频繁删除模块、清除数据或反复改密码。
 

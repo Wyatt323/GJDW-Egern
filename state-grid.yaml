@@ -1,5 +1,5 @@
 name: "国家电网小组件"
-description: "v1.5.1 · 账号密码登录，显示当前余额、本月用电量和上月账单。"
+description: "v1.5.2 · 账号密码登录，显示当前余额、本月用电量和上月账单。"
 author: "Wyatt323"
 homepage: "https://github.com/Wyatt323/GJDW-Egern"
 manual: "https://github.com/Wyatt323/GJDW-Egern#readme"
@@ -51,14 +51,14 @@ env_schema:
 scriptings:
   - generic:
       name: "state-grid-widget"
-      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.5.1"
+      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.5.2"
       update_interval: 86400
       timeout: 10
       env:
         RUN_MODE: "view"
   - generic:
       name: "state-grid-updater"
-      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.5.1"
+      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.5.2"
       update_interval: 86400
       timeout: 100
       env:
@@ -66,14 +66,14 @@ scriptings:
   - schedule:
       name: "state-grid-auto-update"
       cron: "15 8,18 * * *"
-      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.5.1"
+      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-widget.js?v=1.5.2"
       update_interval: 86400
       timeout: 100
       env:
         RUN_MODE: "update"
   - generic:
       name: "state-grid-health"
-      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-health.js?v=1.5.1"
+      script_url: "https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid-health.js?v=1.5.2"
       update_interval: 86400
       timeout: 10
 
