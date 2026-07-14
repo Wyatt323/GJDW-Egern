@@ -4,24 +4,24 @@
 
 ## 一键在线导入
 
-[![一键导入 Egern](https://img.shields.io/badge/Egern-一键导入-00A88F?style=for-the-badge&logo=apple)](https://egernapp.com/modules/new?name=%E5%9B%BD%E5%AE%B6%E7%94%B5%E7%BD%91%E5%B0%8F%E7%BB%84%E4%BB%B6&url=https%3A%2F%2Fraw.githubusercontent.com%2FWyatt323%2FGJDW-Egern%2Frefs%2Fheads%2Ftest%2Fstate-grid.yaml%3Fv%3D1.6.0)
+[![一键导入 Egern](https://img.shields.io/badge/Egern-一键导入-00A88F?style=for-the-badge&logo=apple)](https://egernapp.com/modules/new?name=%E5%9B%BD%E5%AE%B6%E7%94%B5%E7%BD%91%E5%B0%8F%E7%BB%84%E4%BB%B6&url=https%3A%2F%2Fraw.githubusercontent.com%2FWyatt323%2FGJDW-Egern%2Frefs%2Fheads%2Ftest%2Fstate-grid.yaml%3Fv%3D1.6.1)
 
 也可以在 Egern“工具 → 模块 → +”中添加：
 
 ```text
-https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/test/state-grid.yaml?v=1.6.0
+https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/test/state-grid.yaml?v=1.6.1
 ```
 
-## v1.6.0 的重要变化
+## v1.6.1 的重要变化
 
 国网与南网的实现不同。当前公开维护的国网查询脚本使用 `www.95598.cn` 网页接口，并以 `api.wsgw-rewrite.com` 作为代理软件中的虚拟触发地址；它不是通过监听官方 App 的业务请求取数。
 
-新版已删除旧版 `*.95598.cn` App 响应抓取、MitM 和 HTTP Capture 配置，改为主动登录查询。v1.6.0 会按自然月准确选择上月账单，并兼容国网查询引擎的跨年及扁平返回结构，不再把“最新月度记录”或旧版 `monthFee` 错标为上月账单。界面采用深海蓝绿渐变、半透明信息卡和更克制的 iOS 风格排版，在 Egern Widget DSL 不支持原生背景模糊的限制下，以透明叠层模拟轻量毛玻璃质感；小尺寸和中尺寸组件均重新整理了信息层级。耗时查询与主组件渲染保持分离，并保留短周期超时保护及迟到响应隔离。
+新版已删除旧版 `*.95598.cn` App 响应抓取、MitM 和 HTTP Capture 配置，改为主动登录查询。v1.6.1 会按自然月准确选择上月账单，并兼容国网查询引擎的跨年及扁平返回结构，不再把“最新月度记录”或旧版 `monthFee` 错标为上月账单。界面采用深海蓝绿渐变、半透明信息卡和更克制的 iOS 风格排版，在 Egern Widget DSL 不支持原生背景模糊的限制下，以透明叠层模拟轻量毛玻璃质感；小尺寸和中尺寸组件均重新整理了信息层级。耗时查询与主组件渲染保持分离，并保留短周期超时保护及迟到响应隔离。
 
 ## 完整设置
 
 1. 在 Egern 中删除旧的“国家电网小组件”模块。
-2. 使用上方带 `v=1.6.0` 的链接重新导入并启用模块。
+2. 使用上方带 `v=1.6.1` 的链接重新导入并启用模块。
 3. 打开“工具 → 模块 → 国家电网小组件 → 环境变量”。
 4. 填写 `SGCC_USERNAME`：网上国网登录账号，通常是手机号。
 5. 填写 `SGCC_PASSWORD`：网上国网登录密码。
@@ -43,11 +43,11 @@ https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/test/state-grid
 - 主组件显示“请先更新数据”：运行小组件画廊里的“国家电网·更新数据”，或等待每天 08:15/18:15 自动更新。
 - 诊断时间不变化：刷新“国家电网·诊断”只会重读旧日志；请先运行“国家电网·更新数据”发起一次新查询。
 - 查询超时：打开“国家电网·诊断”，查看最后完成或停留在哪一步。
-- 组件完全空白：先预览“国家电网·诊断”，确认应显示 `v1.6.0`。
+- 组件完全空白：先预览“国家电网·诊断”，确认应显示 `v1.6.1`。
 
 ### 如何阅读诊断卡片
 
-v1.6.0 的诊断记录只显示请求序号、经过的服务、HTTP 状态、响应类型和响应长度，不显示请求路径、请求正文、响应正文、账号、密码或 Token。
+v1.6.1 的诊断记录只显示请求序号、经过的服务、HTTP 状态、响应类型和响应长度，不显示请求路径、请求正文、响应正文、账号、密码或 Token。
 
 | 诊断记录 | 含义 |
 |---|---|
