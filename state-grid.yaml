@@ -80,7 +80,5 @@ scriptings:
 widgets:
   - name: "国家电网"
     script_name: "state-grid-widget"
-  - name: "国家电网·更新数据"
-    script_name: "state-grid-updater"
   - name: "国家电网·诊断"
     script_name: "state-grid-health"

@@ -329,6 +329,38 @@ function testTestReleaseLoadsScriptsFromTestBranch() {
   assert.match(readme, /refs\/heads\/test\/state-grid\.yaml/);
 }
 
+async function testManifestHidesUpdaterFromWidgetGallery() {
+  const yaml = fs.readFileSync(new URL('../state-grid.yaml', import.meta.url), 'utf8');
+  const widgets = yaml.slice(yaml.indexOf('\nwidgets:'));
+  assert.match(widgets, /name: "国家电网"/);
+  assert.match(widgets, /name: "国家电网·诊断"/);
+  assert.doesNotMatch(widgets, /国家电网·更新数据/);
+  assert.match(yaml, /name: "state-grid-updater"/);
+}
+
+async function testDiagnosticWidgetUsesGlassLayoutAndReadableEvents() {
+  let source = fs.readFileSync(new URL('../state-grid-health.js', import.meta.url), 'utf8');
+  source = source.replace('export default async function (ctx)', 'async function healthMain(ctx)');
+  source += '\n;globalThis.__healthMain = healthMain;';
+  const sandbox = { Date };
+  vm.runInNewContext(source, sandbox, { filename: 'state-grid-health.js' });
+  const values = new Map([
+    ['state_grid_capture_status_v2', { kind: 'error', message: '查询服务超时，请稍后重试' }],
+    ['state_grid_diagnostic_v1', { events: [
+      { at: '2026-07-14T13:49:26+08:00', message: '#1 请求 api.120399.xyz' },
+      { at: '2026-07-14T13:49:30+08:00', message: '#1 api.120399.xyz → HTTP 200 · JSON · 969B' },
+      { at: '2026-07-14T13:49:42+08:00', message: '查询超时：停在 www.95598.cn' },
+    ] }],
+  ]);
+  const widget = await sandbox.__healthMain({ storage: { getJSON: (key) => values.get(key) || null } });
+  const serialized = JSON.stringify(widget);
+  assert.equal(JSON.stringify(widget.backgroundGradient.colors), JSON.stringify(['#16213A', '#0B7285', '#25A18E']));
+  assert.match(serialized, /#FFFFFF1A/);
+  assert.match(serialized, /查询超时：停在 www\.95598\.cn/);
+  assert.match(serialized, /查询服务超时，请稍后重试/);
+  assert.doesNotMatch(serialized, /backgroundColor":"#245A4A/);
+}
+
 async function testTimeoutWatchdogUsesShortTicksForEgern() {
   const delays = [];
   const { runLegacyProvider } = loadWidgetInternals(
@@ -449,6 +481,8 @@ await testTimeoutWatchdogUsesShortTicksForEgern();
 await testLateHttpResponseAfterTimeoutDoesNotAppendDiagnostics();
 testReleaseVersionIsConsistent();
 testTestReleaseLoadsScriptsFromTestBranch();
+await testManifestHidesUpdaterFromWidgetGallery();
+await testDiagnosticWidgetUsesGlassLayoutAndReadableEvents();
 await testWidgetsUseMinimalGlassDesignSystem();
 await testMediumWidgetRendersAllRequestedMetrics();
 await testLockScreenWidgetsIncludePreviousBill();
