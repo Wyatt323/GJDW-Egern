@@ -1,7 +1,7 @@
 {
   "name": "gjdw-egern",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.5.1",
   "scripts": {
     "test": "node tests/widget.test.mjs",
     "check": "node --input-type=module --check < state-grid-widget.js && node --input-type=module --check < state-grid-health.js && npm test"

@@ -147,6 +147,42 @@ async function testStaleV1SuccessStatusDoesNotClaimV2DataWasUpdated() {
   assert.doesNotMatch(serialized, /网上国网数据已更新|已更新/);
 }
 
+async function testUpdaterPersistsAVisibleTimeoutDiagnostic() {
+  const { widgetMain } = loadWidgetInternals();
+  const values = new Map();
+  const result = await widgetMain({
+    widgetFamily: 'systemMedium',
+    env: {
+      RUN_MODE: 'update',
+      SGCC_USERNAME: 'tester',
+      SGCC_PASSWORD: 'secret',
+    },
+    storage: {
+      getJSON: (key) => values.get(key) || null,
+      setJSON: (key, value) => values.set(key, value),
+      get: (key) => key === 'state_grid_provider_source_v1'
+        ? '$done({response:{body:"[]"}});/*' + 'x'.repeat(50001) + '*/'
+        : values.get(key) || null,
+      set: (key, value) => values.set(key, value),
+      delete: (key) => values.delete(key),
+    },
+    http: {
+      post: async () => { throw new Error('network unreachable'); },
+      get: async () => { throw new Error('network unreachable'); },
+      put: async () => { throw new Error('network unreachable'); },
+      delete: async () => { throw new Error('network unreachable'); },
+      patch: async () => { throw new Error('network unreachable'); },
+      head: async () => { throw new Error('network unreachable'); },
+      options: async () => { throw new Error('network unreachable'); },
+    },
+  });
+  const trace = values.get('state_grid_diagnostic_v1');
+  assert.ok(trace, 'updater should persist a diagnostic trace');
+  assert.match(JSON.stringify(trace), /开始查询|查询引擎/);
+  assert.doesNotMatch(JSON.stringify(trace), /secret|tester/);
+  assert.match(JSON.stringify(result), /尚未完成首次查询|等待账户数据|运行.*更新数据/);
+}
+
 async function renderManualWidget(family) {
   const { widgetMain } = loadWidgetInternals();
   const values = new Map();
@@ -193,6 +229,7 @@ testJanuaryProviderPayloadUsesLastYearDecember();
 testFlatProviderPayloadIsNormalized();
 testLegacyMonthFeeIsNotRelabeledAsPreviousBill();
 await testStaleV1SuccessStatusDoesNotClaimV2DataWasUpdated();
+await testUpdaterPersistsAVisibleTimeoutDiagnostic();
 await testMediumWidgetRendersAllRequestedMetrics();
 await testLockScreenWidgetsIncludePreviousBill();
 console.log('widget tests passed');

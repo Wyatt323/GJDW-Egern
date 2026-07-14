@@ -1,7 +1,8 @@
 const STORAGE_KEY = "state_grid_widget_v2";
 const STATUS_KEY = "state_grid_capture_status_v2";
-const VERSION = "1.5.0";
+const VERSION = "1.5.1";
 const PROVIDER_SOURCE_KEY = "state_grid_provider_source_v1";
+const DIAGNOSTIC_KEY = "state_grid_diagnostic_v1";
 const PROVIDER_URL = "https://raw.githubusercontent.com/Yuheng0101/X/9ea8da5ce1d83572e937fa5d6882edb8382c4c30/Tasks/95598/95598.js";
 const GREEN = "#00A88F";
 const GREEN_DARK = "#00796B";
@@ -26,15 +27,22 @@ async function renderWidget(ctx) {
   const updateMode = env.RUN_MODE === "update";
 
   if (updateMode && env.SGCC_USERNAME && env.SGCC_PASSWORD) {
+    resetDiagnostic(ctx);
+    addDiagnostic(ctx, "开始查询");
     try {
       const remote = normalizePayload(await fetchOfficialData(ctx, env));
       if (remote.length) {
         accounts = mergeAccounts(accounts, remote);
         ctx.storage.setJSON(STORAGE_KEY, { accounts, updatedAt: new Date().toISOString(), source: "网上国网网页接口" });
         ctx.storage.setJSON(STATUS_KEY, { kind: "success", hitAt: new Date().toISOString(), message: `已主动查询 ${remote.length} 个户号` });
+        addDiagnostic(ctx, `查询成功：${remote.length} 个户号`);
+      } else {
+        addDiagnostic(ctx, "查询结束，但没有返回户号数据");
       }
     } catch (error) {
-      ctx.storage.setJSON(STATUS_KEY, { kind: "error", hitAt: new Date().toISOString(), message: providerError(error) });
+      const message = providerError(error);
+      ctx.storage.setJSON(STATUS_KEY, { kind: "error", hitAt: new Date().toISOString(), message });
+      addDiagnostic(ctx, `查询失败：${message}`);
       console.log(`[国家电网] 主动查询失败: ${String(error)}`);
     }
   }
@@ -70,13 +78,18 @@ async function renderWidget(ctx) {
 async function fetchOfficialData(ctx, env) {
   let source = ctx.storage.get(PROVIDER_SOURCE_KEY);
   if (!source || source.length < 50000) {
+    addDiagnostic(ctx, "下载查询引擎");
     const response = await ctx.http.get(PROVIDER_URL, { timeout: 20000 });
     if (response.status < 200 || response.status >= 300) throw new Error(`查询引擎下载失败：HTTP ${response.status}`);
     source = await response.text();
     if (!source || source.length < 50000) throw new Error("查询引擎内容不完整");
     try { ctx.storage.set(PROVIDER_SOURCE_KEY, source); }
     catch (_) { console.log("[国家电网] 查询引擎缓存写入失败，本次继续运行"); }
+    addDiagnostic(ctx, "查询引擎已就绪");
+  } else {
+    addDiagnostic(ctx, "使用本地查询引擎");
   }
+  addDiagnostic(ctx, "登录并查询网上国网");
   return runLegacyProvider(ctx, source, env);
 }
 
@@ -147,6 +160,8 @@ function legacyHttpClient(ctx) {
   const call = (method) => (input, callback) => {
     const request = typeof input === "string" ? { url: input } : { ...input };
     const timeout = Math.max(1000, Math.min(120000, Number(request.timeout || 15) * 1000));
+    const host = safeHost(request.url);
+    addDiagnostic(ctx, `请求 ${host}`);
     const options = {
       headers: request.headers || {},
       body: request.body,
@@ -156,13 +171,42 @@ function legacyHttpClient(ctx) {
     };
     ctx.http[method](request.url, options).then(async (response) => {
       const body = await response.text();
+      addDiagnostic(ctx, `${host} → HTTP ${response.status}`);
       callback(null, { status: response.status, headers: response.headers }, body);
-    }).catch((error) => callback(error, null, null));
+    }).catch((error) => {
+      addDiagnostic(ctx, `${host} → ${safeError(error)}`);
+      callback(error, null, null);
+    });
   };
   return {
     get: call("get"), post: call("post"), put: call("put"), delete: call("delete"),
     patch: call("patch"), head: call("head"), options: call("options"),
   };
+}
+
+function resetDiagnostic(ctx) {
+  try { ctx.storage.setJSON(DIAGNOSTIC_KEY, { updatedAt: new Date().toISOString(), events: [] }); }
+  catch (_) { /* diagnostic storage is best effort */ }
+}
+
+function addDiagnostic(ctx, message) {
+  try {
+    const trace = ctx.storage.getJSON(DIAGNOSTIC_KEY) || { events: [] };
+    const events = Array.isArray(trace.events) ? trace.events.slice(-19) : [];
+    events.push({ at: new Date().toISOString(), message: String(message).slice(0, 160) });
+    ctx.storage.setJSON(DIAGNOSTIC_KEY, { updatedAt: new Date().toISOString(), events });
+  } catch (_) { /* diagnostic storage is best effort */ }
+}
+
+function safeHost(url) {
+  const match = String(url || "").match(/^https?:\/\/([^/]+)/i);
+  return match ? match[1] : "未知接口";
+}
+
+function safeError(error) {
+  return String(error?.message || error || "请求失败")
+    .replace(/https?:\/\/[^\s]+/g, "[URL]")
+    .slice(0, 100);
 }
 
 function providerError(error) {
