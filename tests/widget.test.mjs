@@ -366,13 +366,11 @@ function testTestReleaseLoadsScriptsFromTestBranch() {
   assert.match(readme, /refs\/heads\/test\/state-grid\.yaml/);
 }
 
-async function testManifestHidesUpdaterFromWidgetGallery() {
+async function testUpdaterGalleryActionRemainsAvailableForManualRefresh() {
   const yaml = fs.readFileSync(new URL('../state-grid.yaml', import.meta.url), 'utf8');
   const widgets = yaml.slice(yaml.indexOf('\nwidgets:'));
-  assert.match(widgets, /name: "国家电网"/);
-  assert.match(widgets, /name: "国家电网·诊断"/);
-  assert.doesNotMatch(widgets, /国家电网·更新数据/);
-  assert.match(yaml, /name: "state-grid-updater"/);
+  assert.match(widgets, /name: "国家电网·更新数据"\s+script_name: "state-grid-updater"/);
+  assert.match(yaml, /name: "state-grid-auto-update"/);
 }
 
 async function testDiagnosticWidgetUsesGlassLayoutAndReadableEvents() {
@@ -521,7 +519,7 @@ await testTimeoutWatchdogUsesShortTicksForEgern();
 await testLateHttpResponseAfterTimeoutDoesNotAppendDiagnostics();
 testReleaseVersionIsConsistent();
 testTestReleaseLoadsScriptsFromTestBranch();
-await testManifestHidesUpdaterFromWidgetGallery();
+await testUpdaterGalleryActionRemainsAvailableForManualRefresh();
 await testDiagnosticWidgetUsesGlassLayoutAndReadableEvents();
 await testWidgetsUseMinimalGlassDesignSystem();
 await testMediumWidgetRendersAllRequestedMetrics();
