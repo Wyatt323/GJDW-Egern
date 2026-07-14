@@ -1,9 +1,11 @@
 {
-  "name": "gjdw-egern",
+  "name": "state-grid-scriptable",
   "private": true,
-  "version": "1.6.3",
+  "version": "1.0.0",
   "scripts": {
-    "test": "node tests/widget.test.mjs",
-    "check": "node --input-type=module --check < state-grid-widget.js && node --input-type=module --check < state-grid-updater.js && node --input-type=module --check < state-grid-health.js && npm test"
+    "test": "node tests/scriptable.test.mjs",
+    "test:scriptable": "node tests/scriptable.test.mjs",
+    "test:egern": "node tests/widget.test.mjs",
+    "check": "node --input-type=module --check < StateGrid.js && npm test"
   }
 }
