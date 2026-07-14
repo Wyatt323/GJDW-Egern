@@ -1,6 +1,6 @@
 const STORAGE_KEY = "state_grid_widget_v2";
 const STATUS_KEY = "state_grid_capture_status_v2";
-const VERSION = "1.6.2";
+const VERSION = "1.6.3";
 const PROVIDER_SOURCE_KEY = "state_grid_provider_source_v1";
 const DIAGNOSTIC_KEY = "state_grid_diagnostic_v1";
 const PROVIDER_URL = "https://raw.githubusercontent.com/Yuheng0101/X/9ea8da5ce1d83572e937fa5d6882edb8382c4c30/Tasks/95598/95598.js";
@@ -552,13 +552,13 @@ function emptyWidget(family, captureStatus, env, updateMode) {
   const message = (!env.SGCC_USERNAME || !env.SGCC_PASSWORD)
     ? (compact ? "请配置国网账号" : "请在模块设置中填写网上国网账号和密码")
     : (!updateMode && !captureStatus)
-      ? (compact ? "请先更新数据" : "请运行脚本 state-grid-updater 更新数据")
+      ? (compact ? "请先更新数据" : "请运行“国家电网·立即更新”更新数据")
       : captureStatusMessage(captureStatus, compact);
   return { type: "widget", padding: compact ? 5 : 16, gap: 7, backgroundGradient: BACKGROUND, children: [
     compact ? { type: "image", src: "sf-symbol:bolt.fill", width: 16, height: 16, color: WHITE } : symbolBadge("sf-symbol:bolt.fill", 15),
     { type: "text", text: `国家电网 · v${VERSION}`, font: { size: compact ? "caption1" : "headline", weight: "bold" }, textColor: WHITE },
     { type: "text", text: message, font: { size: "caption1" }, textColor: MUTED, maxLines: compact ? 1 : 3 },
-    ...(compact ? [] : [{ type: "text", text: "手动更新：工具 → 脚本 → state-grid-updater", font: { size: "caption2" }, textColor: MUTED, maxLines: 2 }]),
+    ...(compact ? [] : [{ type: "text", text: "手动更新：小组件画廊 → 国家电网·立即更新", font: { size: "caption2" }, textColor: MUTED, maxLines: 2 }]),
   ] };
 }
 

@@ -350,7 +350,7 @@ async function testSuccessfulResponseRecordsOnlyTypeAndSize() {
 function testReleaseVersionIsConsistent() {
   const packageJson = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   const version = packageJson.version;
-  for (const file of ['state-grid-widget.js', 'state-grid-health.js', 'state-grid.yaml', 'README.md']) {
+  for (const file of ['state-grid-widget.js', 'state-grid-updater.js', 'state-grid-health.js', 'state-grid.yaml', 'README.md']) {
     const text = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
     assert.match(text, new RegExp(version.replace(/\./g, '\\.'), 'g'), `${file} should reference ${version}`);
     assert.doesNotMatch(text, /v=1\.5\.0|v1\.5\.0/, `${file} should not contain stale v1.5.0 references`);
@@ -366,12 +366,13 @@ function testTestReleaseLoadsScriptsFromTestBranch() {
   assert.match(readme, /refs\/heads\/test\/state-grid\.yaml/);
 }
 
-function testManifestPublishesSingleCombinedWidgetAndKeepsManualUpdaterScript() {
+function testManifestPublishesManualUpdateCardWithDedicatedScriptUrl() {
   const yaml = fs.readFileSync(new URL('../state-grid.yaml', import.meta.url), 'utf8');
   const widgets = yaml.slice(yaml.indexOf('\nwidgets:'));
   assert.match(widgets, /name: "国家电网"\s+script_name: "state-grid-widget"/);
-  assert.doesNotMatch(widgets, /国家电网·更新数据|国家电网·诊断|state-grid-health/);
-  assert.match(yaml, /name: "state-grid-updater"/);
+  assert.match(widgets, /name: "国家电网·立即更新"\s+script_name: "state-grid-manual-update"/);
+  assert.doesNotMatch(widgets, /国家电网·诊断|state-grid-health/);
+  assert.match(yaml, /name: "state-grid-manual-update"[\s\S]*state-grid-updater\.js/);
   assert.match(yaml, /name: "state-grid-auto-update"/);
 }
 
@@ -525,7 +526,7 @@ await testTimeoutWatchdogUsesShortTicksForEgern();
 await testLateHttpResponseAfterTimeoutDoesNotAppendDiagnostics();
 testReleaseVersionIsConsistent();
 testTestReleaseLoadsScriptsFromTestBranch();
-testManifestPublishesSingleCombinedWidgetAndKeepsManualUpdaterScript();
+testManifestPublishesManualUpdateCardWithDedicatedScriptUrl();
 await testMainWidgetEmbedsRecentSafeDiagnosticSummary();
 await testWidgetsUseMinimalGlassDesignSystem();
 await testMediumWidgetRendersAllRequestedMetrics();
