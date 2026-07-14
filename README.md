@@ -4,12 +4,12 @@
 
 ## 一键在线导入
 
-[![一键导入 Egern](https://img.shields.io/badge/Egern-一键导入-00A88F?style=for-the-badge&logo=apple)](https://egernapp.com/modules/new?name=%E5%9B%BD%E5%AE%B6%E7%94%B5%E7%BD%91%E5%B0%8F%E7%BB%84%E4%BB%B6&url=https%3A%2F%2Fraw.githubusercontent.com%2FWyatt323%2FGJDW-Egern%2Frefs%2Fheads%2Fmain%2Fstate-grid.yaml%3Fv%3D1.6.0)
+[![一键导入 Egern](https://img.shields.io/badge/Egern-一键导入-00A88F?style=for-the-badge&logo=apple)](https://egernapp.com/modules/new?name=%E5%9B%BD%E5%AE%B6%E7%94%B5%E7%BD%91%E5%B0%8F%E7%BB%84%E4%BB%B6&url=https%3A%2F%2Fraw.githubusercontent.com%2FWyatt323%2FGJDW-Egern%2Frefs%2Fheads%2Ftest%2Fstate-grid.yaml%3Fv%3D1.6.0)
 
 也可以在 Egern“工具 → 模块 → +”中添加：
 
 ```text
-https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/main/state-grid.yaml?v=1.6.0
+https://raw.githubusercontent.com/Wyatt323/GJDW-Egern/refs/heads/test/state-grid.yaml?v=1.6.0
 ```
 
 ## v1.6.0 的重要变化

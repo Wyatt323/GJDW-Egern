@@ -320,6 +320,15 @@ function testReleaseVersionIsConsistent() {
   }
 }
 
+function testTestReleaseLoadsScriptsFromTestBranch() {
+  const yaml = fs.readFileSync(new URL('../state-grid.yaml', import.meta.url), 'utf8');
+  const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  assert.match(yaml, /refs\/heads\/test\/state-grid-widget\.js/);
+  assert.match(yaml, /refs\/heads\/test\/state-grid-health\.js/);
+  assert.doesNotMatch(yaml, /refs\/heads\/main\/state-grid-(widget|health)\.js/);
+  assert.match(readme, /refs\/heads\/test\/state-grid\.yaml/);
+}
+
 async function testTimeoutWatchdogUsesShortTicksForEgern() {
   const delays = [];
   const { runLegacyProvider } = loadWidgetInternals(
@@ -439,6 +448,7 @@ await testSuccessfulResponseRecordsOnlyTypeAndSize();
 await testTimeoutWatchdogUsesShortTicksForEgern();
 await testLateHttpResponseAfterTimeoutDoesNotAppendDiagnostics();
 testReleaseVersionIsConsistent();
+testTestReleaseLoadsScriptsFromTestBranch();
 await testWidgetsUseMinimalGlassDesignSystem();
 await testMediumWidgetRendersAllRequestedMetrics();
 await testLockScreenWidgetsIncludePreviousBill();
