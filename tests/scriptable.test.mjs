@@ -9,7 +9,7 @@ function loadCore(now = '2026-07-14T12:00:00+08:00') {
     .replace('if (!IS_NODE_TEST) await main();', '')
     .replace(/^const IS_NODE_TEST[^;]*;/m, 'const IS_NODE_TEST = true;');
   const sandbox = { console, Date: class extends Date { constructor(v) { super(v ?? now); } static now() { return new Date(now).getTime(); } }, globalThis: {} };
-  vm.runInNewContext(`${transformed}\nglobalThis.__core={normalizeAccounts,previousMonthRecord,buildDeepLink,safeDiagnostic,selectAccount,parseProviderResult};`, sandbox, { filename: 'StateGrid.js' });
+  vm.runInNewContext(`${transformed}\nglobalThis.__core={normalizeAccounts,previousMonthRecord,buildDeepLink,safeDiagnostic,safeProviderPayload,selectAccount,parseProviderResult};`, sandbox, { filename: 'StateGrid.js' });
   return sandbox.globalThis.__core;
 }
 
@@ -36,6 +36,13 @@ function testDeepLinksEncodeActionsAndParameters() {
   assert.match(url, /scriptName=StateGrid/);
   assert.match(url, /action=refresh/);
   assert.match(url, /account=1/);
+}
+
+function testSafeProviderErrorsAreClassifiedWithoutLeakingPayload() {
+  const { safeProviderPayload } = loadCore();
+  assert.equal(safeProviderPayload({ code: '-10009', message: '操作频繁，请次日再次尝试' }), '国网限制登录频率，请明天再试');
+  assert.equal(safeProviderPayload({ errorCode: 'RK1003', message: '需要验证码' }), '国网登录验证未通过');
+  assert.equal(safeProviderPayload({ code: 200, data: [{ consNo: '1' }] }), '');
 }
 
 function testDiagnosticsAreAllowlisted() {
@@ -80,6 +87,12 @@ function testScriptableWatchdogUsesMilliseconds() {
   assert.match(source, /Timer\.schedule\(85000, false/);
 }
 
+function testProviderHttpClientTracksSafeRequestSteps() {
+  assert.match(source, /saveDiagnostic\("pending", `#\$\{requestId\} 请求 \$\{host\}`\)/);
+  assert.match(source, /saveDiagnostic\("pending", `#\$\{requestId\} \$\{host\} → HTTP \$\{status\}`\)/);
+  assert.match(source, /safeHost\(input\.url\)/);
+}
+
 function testProviderRunsInEgernCompatibilityModeWithExpectedArgument() {
   assert.match(source, /globalThis\.Egern\s*=\s*globalThis\.Egern/);
   assert.match(source, /globalThis\.\$request\s*=\s*\{ method: "GET", url: "https:\/\/api\.wsgw-rewrite\.com\/electricity\/bill\/all" \}/);
@@ -99,12 +112,14 @@ function testSensitiveProviderSessionUsesKeychainWhileCachesUseLocalFiles() {
 testPreviousMonthSelectionAcrossYearBoundary();
 testNormalizesManualAndProviderAccounts();
 testDeepLinksEncodeActionsAndParameters();
+testSafeProviderErrorsAreClassifiedWithoutLeakingPayload();
 testDiagnosticsAreAllowlisted();
 testSelectAccountUsesConfiguredIndex();
 testParsesEgernDoneEnvelope();
 testNormalizesActualProviderShapeAndSumsCurrentMonth();
 testControlPanelActionsDoNotDismissBeforeAsyncWorkFinishes();
 testScriptableWatchdogUsesMilliseconds();
+testProviderHttpClientTracksSafeRequestSteps();
 testProviderRunsInEgernCompatibilityModeWithExpectedArgument();
 testSensitiveProviderSessionUsesKeychainWhileCachesUseLocalFiles();
 console.log('scriptable core tests passed');

@@ -1,7 +1,7 @@
 // Variables used by Scriptable.
 // icon-color: deep-green; icon-glyph: bolt;
 
-const VERSION = "1.0.0";
+const VERSION = "1.0.1";
 const IS_NODE_TEST = typeof config === "undefined";
 const KEYS = {
   settings: "stategrid.scriptable.settings.v1",
@@ -47,20 +47,24 @@ function writeLocal(name, value) { const f = localFile(name); f.fm.writeString(f
 function removeLocal(name) { const f = localFile(name); if (f.fm.fileExists(f.path)) f.fm.remove(f.path); }
 function loadCache() { try { return JSON.parse(readLocal(FILES.cache, "")) || { accounts: [], updatedAt: "" }; } catch (_) { return { accounts: [], updatedAt: "" }; } }
 function saveCache(value) { writeLocal(FILES.cache, JSON.stringify(value)); }
-function saveDiagnostic(kind, message) { writeLocal(FILES.diagnostic, JSON.stringify({ kind, message, at: new Date().toISOString() })); }
-function loadDiagnostic() { try { return JSON.parse(readLocal(FILES.diagnostic, "")) || { kind: "idle", message: "尚未查询", at: "" }; } catch (_) { return { kind: "idle", message: "尚未查询", at: "" }; } }
+function saveDiagnostic(kind, message) { const events = loadDiagnostics(); events.push({ kind, message: String(message).slice(0, 160), at: new Date().toISOString() }); writeLocal(FILES.diagnostic, JSON.stringify(events.slice(-20))); }
+function loadDiagnostics() { try { const value = JSON.parse(readLocal(FILES.diagnostic, "[]")); return Array.isArray(value) ? value : value && typeof value === "object" ? [value] : []; } catch (_) { return []; } }
+function loadDiagnostic() { const events = loadDiagnostics(); return events[events.length - 1] || { kind: "idle", message: "尚未查询", at: "" }; }
+async function showDiagnostics() { const table = new UITable(); table.showSeparators = true; const events = loadDiagnostics().slice().reverse(); addTitle(table, "查询诊断", `${events.length} 条安全记录`); if (!events.length) { const row = new UITableRow(); row.addText("尚无诊断记录"); table.addRow(row); } for (const event of events) { const row = new UITableRow(); row.height = 52; row.addText(formatTime(event.at), event.message); table.addRow(row); } await table.present(); }
 
 async function showControlPanel() {
   const table = new UITable();
   table.showSeparators = false;
   const settings = loadSettings();
   const cache = loadCache();
-  const diagnostic = loadDiagnostic();
+  const diagnostics = loadDiagnostics();
+  const diagnostic = diagnostics[diagnostics.length - 1] || { kind: "idle", message: "尚未查询", at: "" };
   const selected = selectAccount(cache.accounts || [], settings);
   addTitle(table, "国家电网", `Scriptable 控制台 · v${VERSION}`);
   addStatus(table, selected ? `${settings.displayName || selected.name || "账户"}  ·  余额 ${money(selected.balance)}` : "尚无账户数据", diagnostic);
   addAction(table, "立即更新", "登录并查询网上国网", "arrow.clockwise", async () => { await refreshData(true); });
   addAction(table, "账号与显示设置", "凭据保存在 iOS Keychain", "person.crop.circle", async () => { await editSettings(); });
+  addAction(table, "查询诊断", `${diagnostics.length} 条安全记录`, "stethoscope", async () => { await showDiagnostics(); });
   addAction(table, "预览小组件", "中尺寸", "rectangle", async () => { await (await createWidget(loadCache(), loadSettings(), "medium")).presentMedium(); });
   addAction(table, "预览小组件", "小尺寸", "square", async () => { await (await createWidget(loadCache(), loadSettings(), "small")).presentSmall(); });
   addAction(table, "清除本地数据", "删除凭据、缓存和诊断", "trash", async () => { await clearLocalData(); });
@@ -103,9 +107,12 @@ async function editSettings() {
 async function refreshData(notify) {
   const settings = loadSettings();
   if (!settings.username || !settings.password) { saveDiagnostic("error", "请先配置账号和密码"); if (notify) await showMessage("无法更新", "请先填写网上国网账号和密码。"); return; }
-  saveDiagnostic("pending", "正在登录并查询");
+  saveDiagnostic("pending", "开始查询");
   try {
+    saveDiagnostic("pending", "下载查询引擎");
     const payload = await queryStateGrid(settings);
+    const providerStatus = safeProviderPayload(payload);
+    if (providerStatus) throw new Error(providerStatus);
     const accounts = normalizeAccounts(payload);
     if (!accounts.length) throw new Error("没有返回户号数据");
     saveCache({ accounts, updatedAt: new Date().toISOString() }); saveDiagnostic("success", `查询成功：${accounts.length} 个户号`);
@@ -119,6 +126,7 @@ async function refreshData(notify) {
 async function queryStateGrid(settings) {
   const source = await requestText(PROVIDER_URL);
   if (source.length < 50000) throw new Error("查询引擎下载失败");
+  saveDiagnostic("pending", "查询引擎已就绪");
   return runProvider(source, settings);
 }
 function runProvider(source, settings) {
@@ -158,21 +166,35 @@ function runProvider(source, settings) {
 }
 function parseProviderResult(value) {
   const response = value?.response || value;
-  if (response && typeof response === "object" && typeof response.body === "string") return JSON.parse(response.body);
+  if (response && typeof response === "object" && typeof response.body === "string") {
+    const parsed = JSON.parse(response.body);
+    const providerStatus = safeProviderPayload(parsed);
+    if (providerStatus) throw new Error(providerStatus);
+    return parsed;
+  }
   if (Array.isArray(response) || (response && typeof response === "object")) return response;
   throw new Error("查询脚本没有返回数据");
 }
 
 function providerHttpClient() {
+  let requestCount = 0;
   const send = (method, options, callback) => {
     const input = typeof options === "string" ? { url: options } : options || {};
+    const requestId = ++requestCount;
+    const host = safeHost(input.url);
+    saveDiagnostic("pending", `#${requestId} 请求 ${host}`);
     const request = new Request(input.url); request.method = method; request.timeoutInterval = 25;
     if (input.headers) request.headers = input.headers;
     if (input.body != null) request.body = typeof input.body === "string" ? input.body : JSON.stringify(input.body);
-    request.loadString().then((body) => callback(null, { status: request.response.statusCode, statusCode: request.response.statusCode, headers: request.response.headers }, body)).catch((error) => callback(error));
+    request.loadString().then((body) => {
+      const status = request.response.statusCode;
+      saveDiagnostic("pending", `#${requestId} ${host} → HTTP ${status}`);
+      callback(null, { status, statusCode: status, headers: request.response.headers }, body);
+    }).catch((error) => { saveDiagnostic("pending", `#${requestId} ${host} → 网络异常`); callback(error); });
   };
   return { get: (o, c) => send("GET", o, c), post: (o, c) => send("POST", o, c), put: (o, c) => send("PUT", o, c), delete: (o, c) => send("DELETE", o, c) };
 }
+function safeHost(url) { const match = String(url || "").match(/^https?:\/\/([^/?#]+)/i); if (!match) return "其他查询服务"; const host = match[1].slice(match[1].lastIndexOf("@") + 1).split(":")[0].toLowerCase(); return host === "api.120399.xyz" || host === "www.95598.cn" ? host : "其他查询服务"; }
 async function requestText(url) { const req = new Request(url); req.timeoutInterval = 20; return req.loadString(); }
 
 async function createWidget(cache, settings, family) {
@@ -219,7 +241,18 @@ function sumCurrentMonth(days, now = new Date()) { const prefix = `${now.getFull
 function previousMonthRecord(rows, now = new Date()) { const date = new Date(now); date.setDate(1); date.setMonth(date.getMonth() - 1); const target = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}`; return (rows || []).find((x) => monthKey(x.month || x.monthEleNum || x.ym || x.date) === target) || null; }
 function monthKey(v) { const m = String(v || "").match(/(20\d{2})\D?([01]?\d)/); return m ? `${m[1]}${String(Number(m[2])).padStart(2, "0")}` : ""; }
 function selectAccount(accounts, settings) { return accounts[Math.max(0, Number(settings.accountIndex) || 0)] || accounts[0] || null; }
-function safeDiagnostic(error) { const m = String(error?.message || error || ""); if (/频繁|次日|-100/.test(m)) return "国网限制登录频率，请明天再试"; if (/验证码|风控|RK00|RK1003/.test(m)) return "国网登录验证未通过"; if (/账号|密码|登录失败/.test(m) && !/password\s*=|token|https?:\/\//i.test(m)) return "账号或密码不正确"; if (/超时|timeout/i.test(m)) return "查询服务超时"; if (/下载/.test(m)) return "查询引擎下载失败"; return "查询服务返回异常"; }
+function safeProviderPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
+  const code = text(payload.code ?? payload.errorCode ?? payload.statusCode ?? payload.resultCode).trim();
+  const message = text(payload.message ?? payload.msg ?? payload.error ?? payload.errorMessage).slice(0, 240);
+  if (!code && !message) return "";
+  if (/频繁|次日|-100/.test(`${code} ${message}`)) return "国网限制登录频率，请明天再试";
+  if (/验证码|风控|RK00|RK1003/.test(`${code} ${message}`)) return "国网登录验证未通过";
+  if (/账号|密码|登录失败|未登录|失效/.test(message)) return "账号、密码或登录状态异常";
+  if (code && !/^(0|200|success|true)$/i.test(code)) return "查询服务返回异常";
+  return "";
+}
+function safeDiagnostic(error) { const m = String(error?.message || error || ""); if (/国网限制登录频率|频繁|次日|-100/.test(m)) return "国网限制登录频率，请明天再试"; if (/国网登录验证未通过|验证码|风控|RK00|RK1003/.test(m)) return "国网登录验证未通过"; if (/账号、密码或登录状态异常/.test(m)) return m; if (/账号|密码|登录失败/.test(m) && !/password\s*=|token|https?:\/\//i.test(m)) return "账号或密码不正确"; if (/超时|timeout/i.test(m)) return "查询服务超时"; if (/下载/.test(m)) return "查询引擎下载失败"; return "查询服务返回异常"; }
 function buildDeepLink(action, params = {}) {
   const base = typeof URLScheme !== "undefined" ? URLScheme.forRunningScript() : "scriptable:///run?scriptName=StateGrid";
   const q = { action, ...params };
