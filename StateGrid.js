@@ -5,8 +5,9 @@ const VERSION = "1.0.0";
 const IS_NODE_TEST = typeof config === "undefined";
 const KEYS = {
   settings: "stategrid.scriptable.settings.v1",
+  providerState: "stategrid.scriptable.provider-state.v1",
 };
-const FILES = { cache: "stategrid-cache-v1.json", diagnostic: "stategrid-diagnostic-v1.json", providerState: "stategrid-provider-state-v1.json" };
+const FILES = { cache: "stategrid-cache-v1.json", diagnostic: "stategrid-diagnostic-v1.json" };
 const PROVIDER_URL = "https://raw.githubusercontent.com/Yuheng0101/X/9ea8da5ce1d83572e937fa5d6882edb8382c4c30/Tasks/95598/95598.js";
 const COLORS = { ink: "16213A", teal: "0B7285", mint: "25A18E", white: "FFFFFF", muted: "BCE6E4", danger: "FFD4D1", success: "BFFFE7" };
 
@@ -39,6 +40,7 @@ function loadSettings() {
   catch (_) { return { accountIndex: 0, displayName: "", openURL: "https://www.95598.cn/osgweb/index" }; }
 }
 function saveSettings(value) { Keychain.set(KEYS.settings, JSON.stringify(value)); }
+function removeSecure(key) { if (Keychain.contains(key)) Keychain.remove(key); }
 function localFile(name) { const fm = FileManager.local(); const dir = fm.joinPath(fm.documentsDirectory(), "StateGridData"); if (!fm.fileExists(dir)) fm.createDirectory(dir, true); return { fm, path: fm.joinPath(dir, name) }; }
 function readLocal(name, fallback) { try { const f = localFile(name); return f.fm.fileExists(f.path) ? f.fm.readString(f.path) : fallback; } catch (_) { return fallback; } }
 function writeLocal(name, value) { const f = localFile(name); f.fm.writeString(f.path, value); }
@@ -94,7 +96,7 @@ async function editSettings() {
   if (await alert.presentAlert() < 0) return;
   const username = alert.textFieldValue(0).trim();
   const password = alert.textFieldValue(1);
-  if (username !== old.username || password !== old.password) removeLocal(FILES.providerState);
+  if (username !== old.username || password !== old.password) removeSecure(KEYS.providerState);
   saveSettings({ ...old, username, password, displayName: alert.textFieldValue(2).trim(), accountIndex: Math.max(0, parseInt(alert.textFieldValue(3), 10) || 0) });
 }
 
@@ -126,13 +128,13 @@ function runProvider(source, settings) {
     const finish = (fn, value) => { if (settled) return; settled = true; if (timer) timer.invalidate(); cleanup(); fn(value); };
     const prefValues = { "95598_username": settings.username, "95598_password": settings.password, "95598_account_index": String(settings.accountIndex || 0), "95598_showmode": "0" };
     let providerState = {};
-    try { providerState = JSON.parse(readLocal(FILES.providerState, "{}")); } catch (_) {}
+    try { providerState = Keychain.contains(KEYS.providerState) ? JSON.parse(Keychain.get(KEYS.providerState)) : {}; } catch (_) {}
     if (!providerState || typeof providerState !== "object" || Array.isArray(providerState)) providerState = {};
     const saveProviderValue = (value, key) => {
       const stringValue = value == null ? "" : String(value);
       if ((settings.username && stringValue.includes(settings.username)) || (settings.password && stringValue.includes(settings.password)) || stringValue.length > 20000) return false;
       if (value == null) delete providerState[key]; else providerState[key] = stringValue;
-      writeLocal(FILES.providerState, JSON.stringify(providerState)); return true;
+      Keychain.set(KEYS.providerState, JSON.stringify(providerState)); return true;
     };
     const $prefs = { valueForKey: (key) => prefValues[key] || providerState[key] || null, setValueForKey: saveProviderValue, removeValueForKey: (key) => saveProviderValue(null, key) };
     const $persistentStore = { read: $prefs.valueForKey, write: saveProviderValue };
@@ -218,8 +220,13 @@ function previousMonthRecord(rows, now = new Date()) { const date = new Date(now
 function monthKey(v) { const m = String(v || "").match(/(20\d{2})\D?([01]?\d)/); return m ? `${m[1]}${String(Number(m[2])).padStart(2, "0")}` : ""; }
 function selectAccount(accounts, settings) { return accounts[Math.max(0, Number(settings.accountIndex) || 0)] || accounts[0] || null; }
 function safeDiagnostic(error) { const m = String(error?.message || error || ""); if (/频繁|次日|-100/.test(m)) return "国网限制登录频率，请明天再试"; if (/验证码|风控|RK00|RK1003/.test(m)) return "国网登录验证未通过"; if (/账号|密码|登录失败/.test(m) && !/password\s*=|token|https?:\/\//i.test(m)) return "账号或密码不正确"; if (/超时|timeout/i.test(m)) return "查询服务超时"; if (/下载/.test(m)) return "查询引擎下载失败"; return "查询服务返回异常"; }
-function buildDeepLink(action, params = {}) { const q = { scriptName: "StateGrid", action, ...params }; return `scriptable:///run?${Object.entries(q).map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&")}`; }
-async function clearLocalData() { const a = new Alert(); a.title = "清除本地数据"; a.message = "将删除 Keychain 中的账号密码，以及本地缓存和诊断。"; a.addDestructiveAction("清除"); a.addCancelAction("取消"); if (await a.presentAlert() !== 0) return; if (Keychain.contains(KEYS.settings)) Keychain.remove(KEYS.settings); Object.values(FILES).forEach(removeLocal); }
+function buildDeepLink(action, params = {}) {
+  const base = typeof URLScheme !== "undefined" ? URLScheme.forRunningScript() : "scriptable:///run?scriptName=StateGrid";
+  const q = { action, ...params };
+  const suffix = Object.entries(q).map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
+  return `${base}${base.includes("?") ? "&" : "?"}${suffix}`;
+}
+async function clearLocalData() { const a = new Alert(); a.title = "清除本地数据"; a.message = "将删除 Keychain 中的账号密码和登录会话，以及本地缓存和诊断。"; a.addDestructiveAction("清除"); a.addCancelAction("取消"); if (await a.presentAlert() !== 0) return; Object.values(KEYS).forEach(removeSecure); Object.values(FILES).forEach(removeLocal); }
 async function showMessage(title, message) { const a = new Alert(); a.title = title; a.message = message; a.addAction("好"); await a.presentAlert(); }
 function formatTime(v) { if (!v) return "--:--"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "--:--" : `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; }
 function money(v) { return v == null ? "--" : `¥${Number(v).toFixed(2)}`; }

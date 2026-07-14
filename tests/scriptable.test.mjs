@@ -88,10 +88,12 @@ function testProviderRunsInEgernCompatibilityModeWithExpectedArgument() {
   assert.match(source, /service: "true"/);
 }
 
-function testLargeProviderAndCachesUseLocalFilesNotKeychain() {
+function testSensitiveProviderSessionUsesKeychainWhileCachesUseLocalFiles() {
   assert.match(source, /FileManager\.local\(\)/);
   assert.doesNotMatch(source, /Keychain\.set\(KEYS\.cache/);
   assert.match(source, /Keychain\.set\(KEYS\.settings/);
+  assert.match(source, /Keychain\.set\(KEYS\.providerState/);
+  assert.doesNotMatch(source, /FILES\.providerState/);
 }
 
 testPreviousMonthSelectionAcrossYearBoundary();
@@ -104,5 +106,5 @@ testNormalizesActualProviderShapeAndSumsCurrentMonth();
 testControlPanelActionsDoNotDismissBeforeAsyncWorkFinishes();
 testScriptableWatchdogUsesMilliseconds();
 testProviderRunsInEgernCompatibilityModeWithExpectedArgument();
-testLargeProviderAndCachesUseLocalFilesNotKeychain();
+testSensitiveProviderSessionUsesKeychainWhileCachesUseLocalFiles();
 console.log('scriptable core tests passed');
