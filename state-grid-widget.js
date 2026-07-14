@@ -284,16 +284,20 @@ function containsCredential(value, env) {
 
 function providerError(error, env = {}) {
   const message = String(error?.message || error || "");
-  if (containsCredential(message, env) || /bearer\s+|(?:token|password|passwd|authorization)\s*[:=]|https?:\/\//i.test(message)) {
-    return "查询服务返回异常，请查看诊断步骤";
-  }
-  if (/密码|账号/.test(message)) return "账号或密码未配置/不正确";
-  if (/频繁|-100/.test(message)) return "国网限制登录频率，请明天再试";
-  if (/验证码|风控/.test(message)) return "国网登录验证未通过，请稍后重试";
+  // Classify only fixed, non-sensitive categories before applying the final
+  // redaction guard. Provider messages often include a help URL, which must
+  // not erase a safe category such as rate limiting or login verification.
+  if (/频繁|-100|次日再次尝试|登录次数过多/.test(message)) return "国网限制登录频率，请明天再试";
+  if (/验证码|风控|RK007|RK008|RK1003/.test(message)) return "国网登录验证未通过，请稍后重试";
+  if (/密码|账号|登录失败/.test(message)) return "账号或密码未配置/不正确";
   if (/查询引擎.*(?:下载|内容)/.test(message)) return "查询引擎下载失败，请检查网络";
   if (/timeout|timed out|超时/i.test(message)) return "查询服务超时，请稍后重试";
   if (/network|网络|连接|fetch|socket/i.test(message)) return "查询服务网络异常，请稍后重试";
   if (/没有返回数据/.test(message)) return "查询服务没有返回数据";
+  if (/无法解析|解析失败|解密响应失败/.test(message)) return "查询服务响应解析失败，请稍后重试";
+  if (containsCredential(message, env) || /bearer\s+|(?:token|password|passwd|authorization)\s*[:=]|https?:\/\//i.test(message)) {
+    return "查询服务返回异常，请查看诊断步骤";
+  }
   return "查询服务返回异常，请查看诊断步骤";
 }
 

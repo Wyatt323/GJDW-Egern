@@ -196,6 +196,14 @@ function testDiagnosticsRedactSecretsAndUrlDetails() {
   assert.equal(safeHost('https://user:pass@api.120399.xyz/private?token=hidden'), 'api.120399.xyz');
 }
 
+function testProviderErrorPreservesSafeCategoryWhenRawMessageContainsUrl() {
+  const { providerError } = loadWidgetInternals();
+  const risk = new Error('账号触发登录风控，请次日再次尝试。请登录 https://www.95598.cn/ 手动确认账号密码');
+  assert.equal(providerError(risk), '国网限制登录频率，请明天再试');
+  assert.equal(providerError(new Error('解密响应失败：https://api.120399.xyz')), '查询服务响应解析失败，请稍后重试');
+  assert.equal(providerError(new Error('查询脚本返回的数据无法解析')), '查询服务响应解析失败，请稍后重试');
+}
+
 async function testProviderStorageRejectsCredentialValues() {
   const { runLegacyProvider } = loadWidgetInternals();
   const values = new Map();
@@ -472,6 +480,7 @@ testLegacyMonthFeeIsNotRelabeledAsPreviousBill();
 await testStaleV1SuccessStatusDoesNotClaimV2DataWasUpdated();
 await testUpdaterPersistsAVisibleTimeoutDiagnostic();
 testDiagnosticsRedactSecretsAndUrlDetails();
+testProviderErrorPreservesSafeCategoryWhenRawMessageContainsUrl();
 await testProviderStorageRejectsCredentialValues();
 await testNetworkFailurePersistsOnlySafeHostAndCategory();
 await testZeroResultReplacesStaleSuccessStatus();
