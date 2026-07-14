@@ -366,34 +366,40 @@ function testTestReleaseLoadsScriptsFromTestBranch() {
   assert.match(readme, /refs\/heads\/test\/state-grid\.yaml/);
 }
 
-async function testUpdaterGalleryActionRemainsAvailableForManualRefresh() {
+function testManifestPublishesSingleCombinedWidgetAndKeepsManualUpdaterScript() {
   const yaml = fs.readFileSync(new URL('../state-grid.yaml', import.meta.url), 'utf8');
   const widgets = yaml.slice(yaml.indexOf('\nwidgets:'));
-  assert.match(widgets, /name: "国家电网·更新数据"\s+script_name: "state-grid-updater"/);
+  assert.match(widgets, /name: "国家电网"\s+script_name: "state-grid-widget"/);
+  assert.doesNotMatch(widgets, /国家电网·更新数据|国家电网·诊断|state-grid-health/);
+  assert.match(yaml, /name: "state-grid-updater"/);
   assert.match(yaml, /name: "state-grid-auto-update"/);
 }
 
-async function testDiagnosticWidgetUsesGlassLayoutAndReadableEvents() {
-  let source = fs.readFileSync(new URL('../state-grid-health.js', import.meta.url), 'utf8');
-  source = source.replace('export default async function (ctx)', 'async function healthMain(ctx)');
-  source += '\n;globalThis.__healthMain = healthMain;';
-  const sandbox = { Date };
-  vm.runInNewContext(source, sandbox, { filename: 'state-grid-health.js' });
+async function testMainWidgetEmbedsRecentSafeDiagnosticSummary() {
+  const { widgetMain } = loadWidgetInternals();
   const values = new Map([
-    ['state_grid_capture_status_v2', { kind: 'error', message: '查询服务超时，请稍后重试' }],
+    ['state_grid_capture_status_v2', { kind: 'error', message: '国网登录状态已失效，请重新查询' }],
     ['state_grid_diagnostic_v1', { events: [
-      { at: '2026-07-14T13:49:26+08:00', message: '#1 请求 api.120399.xyz' },
-      { at: '2026-07-14T13:49:30+08:00', message: '#1 api.120399.xyz → HTTP 200 · JSON · 969B' },
-      { at: '2026-07-14T13:49:42+08:00', message: '查询超时：停在 www.95598.cn' },
+      { at: '2026-07-14T16:09:55+08:00', message: '#12 api.120399.xyz → HTTP 200 · JSON · 64B' },
+      { at: '2026-07-14T16:10:00+08:00', message: '#12 结果：国网登录状态已失效，请重新查询' },
     ] }],
   ]);
-  const widget = await sandbox.__healthMain({ storage: { getJSON: (key) => values.get(key) || null } });
+  const widget = await widgetMain({
+    widgetFamily: 'systemMedium',
+    env: { ACCOUNT: '1234567890123', BALANCE: '128.30', MONTH_KWH: '42.8', LAST_MONTH_BILL: '47.25' },
+    storage: {
+      getJSON: (key) => values.get(key) || null,
+      setJSON: (key, value) => values.set(key, value),
+      get: (key) => values.get(key) || null,
+      set: (key, value) => values.set(key, value),
+      delete: (key) => values.delete(key),
+    },
+  });
   const serialized = JSON.stringify(widget);
-  assert.equal(JSON.stringify(widget.backgroundGradient.colors), JSON.stringify(['#16213A', '#0B7285', '#25A18E']));
-  assert.match(serialized, /#FFFFFF1A/);
-  assert.match(serialized, /查询超时：停在 www\.95598\.cn/);
-  assert.match(serialized, /查询服务超时，请稍后重试/);
-  assert.doesNotMatch(serialized, /backgroundColor":"#245A4A/);
+  assert.match(serialized, /最近诊断/);
+  assert.match(serialized, /国网登录状态已失效，请重新查询/);
+  assert.match(serialized, /16:10/);
+  assert.doesNotMatch(serialized, /Token|private|password/);
 }
 
 async function testTimeoutWatchdogUsesShortTicksForEgern() {
@@ -519,8 +525,8 @@ await testTimeoutWatchdogUsesShortTicksForEgern();
 await testLateHttpResponseAfterTimeoutDoesNotAppendDiagnostics();
 testReleaseVersionIsConsistent();
 testTestReleaseLoadsScriptsFromTestBranch();
-await testUpdaterGalleryActionRemainsAvailableForManualRefresh();
-await testDiagnosticWidgetUsesGlassLayoutAndReadableEvents();
+testManifestPublishesSingleCombinedWidgetAndKeepsManualUpdaterScript();
+await testMainWidgetEmbedsRecentSafeDiagnosticSummary();
 await testWidgetsUseMinimalGlassDesignSystem();
 await testMediumWidgetRendersAllRequestedMetrics();
 await testLockScreenWidgetsIncludePreviousBill();

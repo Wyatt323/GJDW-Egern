@@ -1,6 +1,6 @@
 const STORAGE_KEY = "state_grid_widget_v2";
 const STATUS_KEY = "state_grid_capture_status_v2";
-const VERSION = "1.6.1";
+const VERSION = "1.6.2";
 const PROVIDER_SOURCE_KEY = "state_grid_provider_source_v1";
 const DIAGNOSTIC_KEY = "state_grid_diagnostic_v1";
 const PROVIDER_URL = "https://raw.githubusercontent.com/Yuheng0101/X/9ea8da5ce1d83572e937fa5d6882edb8382c4c30/Tasks/95598/95598.js";
@@ -29,6 +29,7 @@ async function renderWidget(ctx) {
   const env = ctx.env || {};
   const stored = ctx.storage.getJSON(STORAGE_KEY) || { accounts: [] };
   const captureStatus = ctx.storage.getJSON(STATUS_KEY) || null;
+  const diagnostic = ctx.storage.getJSON(DIAGNOSTIC_KEY) || null;
   let accounts = Array.isArray(stored.accounts) ? stored.accounts : [];
   const updateMode = env.RUN_MODE === "update";
 
@@ -80,7 +81,10 @@ async function renderWidget(ctx) {
   if (family === "accessoryCircular") return circularWidget(account);
   if (family === "accessoryRectangular") return lockWidget(account);
   if (family === "systemSmall") return smallWidget(account, env);
-  return mediumWidget(account, env, family === "systemLarge" || family === "systemExtraLarge");
+  return mediumWidget(account, env, family === "systemLarge" || family === "systemExtraLarge", {
+    trace: diagnostic,
+    status: ctx.storage.getJSON(STATUS_KEY) || captureStatus,
+  });
 }
 
 async function fetchOfficialData(ctx, env) {
@@ -407,7 +411,7 @@ function accountFromEnv(env) {
   };
 }
 
-function mediumWidget(a, env, expanded) {
+function mediumWidget(a, env, expanded, diagnostic) {
   const openURL = env.OPEN_URL || "https://www.95598.cn/osgweb/index";
   const children = [
     header(a),
@@ -419,7 +423,7 @@ function mediumWidget(a, env, expanded) {
         metric("上月账单", money(a.previousMonthFee), "sf-symbol:doc.text.fill", WHITE),
       ],
     },
-    { type: "spacer" },
+    diagnosticSummary(diagnostic),
     footer(a),
   ];
   if (expanded) children.splice(3, 0, recentDays(a.days));
@@ -480,6 +484,28 @@ function metric(title, value, icon, color) {
   ] };
 }
 
+function diagnosticSummary(diagnostic) {
+  const events = Array.isArray(diagnostic?.trace?.events) ? diagnostic.trace.events : [];
+  const latest = events[events.length - 1] || null;
+  const status = String(diagnostic?.status?.message || "暂无诊断记录").slice(0, 52);
+  const time = latest?.at ? diagnosticTime(latest.at) : "--:--";
+  return { type: "stack", direction: "column", gap: 3, padding: [7, 9], borderRadius: 11, backgroundColor: GLASS, children: [
+    { type: "stack", direction: "row", alignItems: "center", gap: 5, children: [
+      { type: "image", src: "sf-symbol:stethoscope", width: 10, height: 10, color: MUTED },
+      { type: "text", text: "最近诊断", font: { size: "caption2", weight: "semibold" }, textColor: MUTED, maxLines: 1 },
+      { type: "spacer" },
+      { type: "text", text: time, font: { size: "caption2", weight: "medium" }, textColor: MUTED, maxLines: 1 },
+    ] },
+    { type: "text", text: status, font: { size: "caption2", weight: "medium" }, textColor: diagnostic?.status?.kind === "error" ? DANGER : WHITE, maxLines: 1, minScale: 0.65 },
+  ] };
+}
+
+function diagnosticTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--:--";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
 function footer(a) {
   return { type: "stack", direction: "row", alignItems: "center", gap: 6, children: [
     { type: "image", src: "sf-symbol:clock", width: 10, height: 10, color: MUTED },
@@ -526,12 +552,13 @@ function emptyWidget(family, captureStatus, env, updateMode) {
   const message = (!env.SGCC_USERNAME || !env.SGCC_PASSWORD)
     ? (compact ? "请配置国网账号" : "请在模块设置中填写网上国网账号和密码")
     : (!updateMode && !captureStatus)
-      ? (compact ? "请先更新数据" : "请在小组件画廊中运行“国家电网·更新数据”")
+      ? (compact ? "请先更新数据" : "请运行脚本 state-grid-updater 更新数据")
       : captureStatusMessage(captureStatus, compact);
   return { type: "widget", padding: compact ? 5 : 16, gap: 7, backgroundGradient: BACKGROUND, children: [
     compact ? { type: "image", src: "sf-symbol:bolt.fill", width: 16, height: 16, color: WHITE } : symbolBadge("sf-symbol:bolt.fill", 15),
     { type: "text", text: `国家电网 · v${VERSION}`, font: { size: compact ? "caption1" : "headline", weight: "bold" }, textColor: WHITE },
     { type: "text", text: message, font: { size: "caption1" }, textColor: MUTED, maxLines: compact ? 1 : 3 },
+    ...(compact ? [] : [{ type: "text", text: "手动更新：工具 → 脚本 → state-grid-updater", font: { size: "caption2" }, textColor: MUTED, maxLines: 2 }]),
   ] };
 }
 
